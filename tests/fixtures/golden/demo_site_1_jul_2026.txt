@@ -1,0 +1,64 @@
+Dealership: Demo Site 1
+Month: Jul 2026
+
+Executive Summary:
+- Overall Month Rating: Mixed
+- Primary Strength: Sales campaign deals up from 2 to 10
+- Primary Risk: Same-day deal mix down from 68% to 18%
+
+Status: success
+Parsing Status: parsed
+Confidence Score: 1.0
+Insights Source: rule-based
+Top Priority Level: High
+Review Required: yes
+Review Severity: flagged
+Sentiment: mixed
+Insight Count After Deduplication: 4
+Review Reason Tags: conflicting_signals | unreliable_metrics | slow_response_time
+
+Priority Insights:
+Deal volume fell from 176 to 114 (35.2%), with other lead types accounting for 56 of the drop.
+Service campaign return reached $44,183, up from $10,059, with Closed RO returning $23,114 of it (52%).
+Lead volume fell from 331 to 91 (72.5%), with other lead types accounting for 242 of the drop.
+Lead-to-appointment conversion rose from 4% to 9% (5 pts), on 72.5% fewer leads.
+
+Summary:
+July moved in both directions, with deal volume down 35.2% to 114. Service campaign return rose 339% to $44,183. Lead volume fell 72.5% to 91. Service reminders sent rose 329% to 300.
+
+SMS Version:
+DealerSocket July Insights:
+Service campaign return up 339% to $44,183, but deal volume down 35.2% to 114 and lead volume down 72.5%.
+
+Source Files:
+Sales PDF: C:\Accounts\Demo Site 1\Demo Site 1 - Sales Report - July 26.pdf
+Service PDF: C:\Accounts\Demo Site 1\Demo Site 1 - Service Report - July 26.pdf
+
+Extracted Metrics:
+- sales_appointment_to_sales
+- sales_campaign_deals
+- sales_campaign_roi
+- sales_email_capture_rate
+- sales_internet_response_time
+- sales_new_leads_to_appointments
+- sales_new_leads_to_test_drives
+- sales_overall_conversion_rate
+- sales_overdue_tasks
+- sales_pipeline_size
+- sales_same_day_deal_pct
+- sales_total_deals
+- sales_total_leads
+- sales_uncontacted_leads
+- service_bookings_from_campaigns
+- service_campaign_roi
+- service_customers_enrolled
+- service_no_shows
+- service_outstanding_tasks
+- service_rebooked_no_shows
+- service_reminders_sent
+
+Rules Triggered:
+- service_roi_snapshot
+- leads_down_conversion_up
+- sales_volume_snapshot
+- funnel_engine

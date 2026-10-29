@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Machine-specific state - never travels between machines
+user_settings.json
+python-path.txt
+
+# Real client data (see ROLLOUT.md). data/contacts.csv is tracked as a header-only
+# starter file; real contacts are kept out locally with `git update-index --skip-worktree`.
+data/metric_history.json
+
+# update.ps1 settings backups - these hold a copy of .env
+backup-*/
+
+# Secrets. .env.example is the tracked template; .env is never committed.
+.env
+.env.*
+!.env.example
+
+# Logs and diagnostics (all regenerated, all size-capped)
+*.log
+logs/*.json
+logs/*.log
+Insights Output/
+reporting_audit/
+
+# Generated per-dealership deliverables (real client data)
+/*.txt
+!/README.txt
+!/requirements-web.txt
+/*.docx
+/*.csv
+/*.xlsx
+/*.json
+/*.pdf
+Performance Intelligence/
+Consolidated_SMS_Outputs*.md
+Consolidated_SMS_Outputs*.txt
+Consolidated_SMS_Outputs*.docx
+*/processing.log
+
+# Editor
+.vscode/
+.idea/

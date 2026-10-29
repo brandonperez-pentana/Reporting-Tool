@@ -1,0 +1,31 @@
+{{ placeholder_warning_banner }}Dealership: {{ dealership_name }}
+Month: {{ reporting_month }}
+
+Executive Summary:
+- Overall Month Rating: {{ executive_summary.overall_month_rating }}
+- Primary Strength: {{ executive_summary.primary_strength }}
+- Primary Risk: {{ executive_summary.primary_risk }}
+
+Status: {{ validation_results.report_status }}
+Parsing Status: {{ validation_results.parsing_status }}
+Confidence Score: {{ validation_results.confidence_score }}
+Insights Source: {{ validation_results.insights_source }}
+Top Priority Level: {{ validation_results.top_priority_level }}
+Review Required: {{ review_required_display }}
+Review Severity: {{ review_severity }}
+Sentiment: {{ executive_summary.sentiment }}
+Insight Count After Deduplication: {{ validation_results.insight_count_after_deduplication }}
+Review Reason Tags: {{ review_reason_tags_display }}
+
+Priority Insights:
+{{ priority_insights_block }}
+
+Summary:
+{{ summary }}
+
+SMS Version:
+{{ sms_text }}
+
+Source Files:
+Sales PDF: {{ source_files.sales_pdf or 'Missing' }}
+Service PDF: {{ source_files.service_pdf or 'Missing' }}{{ optional_suffix }}

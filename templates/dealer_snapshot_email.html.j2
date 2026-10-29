@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>DealerSocket Monthly Snapshot</title>
+  <!--[if mso]><style type="text/css">table, td { border-collapse: collapse; }</style><![endif]-->
+</head>
+<body style="margin:0;padding:0;background-color:#F4F4F4;font-family:Arial, Helvetica, sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#F4F4F4;">
+    <tr>
+      <td align="center" style="padding:16px 8px;">
+        <!-- Fixed 600px rather than width:100% + max-width:600px. The desktop
+             preview renderer ignores max-width, so the card stretched wider
+             than the 600px banner images and left them short of the right
+             edge. max-width:100% still lets it shrink on narrow screens. -->
+        <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="width:600px;max-width:100%;background-color:#ffffff;border-collapse:collapse;">
+          {% if asset_banner_top %}
+          <tr>
+            <td style="padding:0;line-height:0;font-size:0;">
+              <img src="{{ asset_banner_top }}" alt="" width="600" style="display:block;width:100%;max-width:600px;height:auto;border:0;">
+            </td>
+          </tr>
+          {% endif %}
+          {% if asset_banner_hero %}
+          <tr>
+            <td style="padding:0;line-height:0;font-size:0;">
+              <img src="{{ asset_banner_hero }}" alt="" width="600" style="display:block;width:100%;max-width:600px;height:auto;border:0;">
+            </td>
+          </tr>
+          {% endif %}
+          <tr>
+            <td style="padding:22px 22px 16px 22px;color:#333333;font-size:15px;line-height:1.5;">
+              <p style="margin:0 0 12px 0;">Hi {{ name }},</p>
+              <p style="margin:0 0 12px 0;">Attached are your Sales and Service Reports for <strong>{{ month_name }}</strong>, along with a concise summary of the key insights from this month. Please take a moment to review the highlights below.</p>
+              <p style="margin:16px 0 8px 0;"><strong>Key Insights:</strong></p>
+              <ul style="margin:8px 0 16px 20px;padding:0;color:#333333;">
+                <li style="margin:0 0 8px 0;">{{ insight_1 }}</li>
+                <li style="margin:0 0 8px 0;">{{ insight_2 }}</li>
+                <li style="margin:0 0 8px 0;">{{ insight_3 }}</li>
+                <li style="margin:0 0 8px 0;">{{ insight_4 }}</li>
+              </ul>
+              {% if summary %}
+              <p style="margin:16px 0 8px 0;"><strong>Summary</strong></p>
+              <p style="margin:0 0 16px 0;">{{ summary }}</p>
+              {% endif %}
+              <p style="margin:0 0 12px 0;">If you have any questions or would like to explore any of these points in more detail, feel free to reach out and I’ll be happy to help.</p>
+              {% if sender_name or sender_title %}
+              <p style="margin:16px 0 4px 0;">Best regards,</p>
+              {% if sender_name %}<p style="margin:0;font-weight:bold;">{{ sender_name }}</p>{% endif %}
+              {% if sender_title %}<p style="margin:4px 0 0 0;">{{ sender_title }}</p>{% endif %}
+              {% endif %}
+            </td>
+          </tr>
+          {% if asset_button_help %}
+          <tr>
+            <td align="center" style="padding:16px 22px 24px 22px;text-align:center;">
+              <p style="margin:0 0 8px 0;font-size:14px;font-weight:bold;color:#000000;text-align:center;">Need Help?</p>
+              <p style="margin:0 0 12px 0;font-size:14px;font-weight:bold;color:#000000;text-align:center;">Click the button below to contact our Service Now Portal!</p>
+              <a href="{{ help_portal_url }}" target="_blank" style="text-decoration:none;border:0;">
+                <img src="{{ asset_button_help }}" alt="Click for our Service Now Portal" width="310" style="display:inline-block;max-width:100%;height:auto;border:0;">
+              </a>
+            </td>
+          </tr>
+          {% endif %}
+          <tr>
+            <td style="background-color:#00303F;padding:22px;color:#ffffff;font-size:14px;text-align:center;">
+              {% if asset_footer_logo %}
+              <p style="margin:0 0 12px 0;text-align:center;">
+                <a href="{{ footer_logo_url }}" target="_blank" style="text-decoration:none;border:0;">
+                  <img src="{{ asset_footer_logo }}" alt="Pentana Solutions" width="255" style="display:inline-block;max-width:100%;height:auto;border:0;">
+                </a>
+              </p>
+              {% endif %}
+              <p style="margin:0;">© {{ year }} Pentana Solutions. All rights reserved.</p>
+              <p style="margin:12px 0 0 0;">Our mailing address is:<br>549 Blackburn Road, Mount Waverley,<br>VIC 3149, Australia</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reporter</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+
+<header class="masthead">
+  <div class="brand">
+    <span class="mark">R</span>
+    <div>
+      <h1>Reporter</h1>
+      <p id="session-line">No reporting run loaded</p>
+    </div>
+  </div>
+  <nav class="stages" role="tablist">
+    <button class="stage-tab is-active" data-stage="reporting" role="tab">1 &middot; Reporting</button>
+    <button class="stage-tab" data-stage="queue" role="tab">2 &middot; Email Queue</button>
+    <button class="stage-tab" data-stage="sms" role="tab">3 &middot; SMS</button>
+  </nav>
+  <div class="masthead-actions">
+    <span class="hint" id="signed-in" hidden></span>
+    <button class="btn" id="open-contacts">Contacts</button>
+    <button class="btn" id="open-settings">&#9881; Settings</button>
+  </div>
+</header>
+
+<div id="status-bar" class="status" hidden><span id="status-text"></span><button class="link" id="status-dismiss">Dismiss</button></div>
+
+<!-- ============ STAGE 1 ============ -->
+<main class="stage is-active" id="stage-reporting">
+  <div class="runbar">
+    <label for="month-select">Month</label>
+    <select id="month-select"></select>
+    <button class="btn btn-primary" id="run-reporting">Run Reporting</button>
+    <button class="btn" id="open-portfolio" title="Choose the dealerships you report on">My dealerships</button>
+    <label id="run-all-wrap" hidden><input type="checkbox" id="run-all"> Run every dealership this time</label>
+    <div class="progress" id="run-progress" hidden>
+      <div class="progress-track"><div class="progress-fill" id="run-progress-fill"></div></div>
+      <span id="run-progress-text"></span>
+    </div>
+  </div>
+
+  <div class="three-pane">
+    <section class="pane pane-list">
+      <div class="pane-head">
+        <h2>Dealerships</h2>
+        <span class="count" id="dealership-count">0</span>
+      </div>
+      <ul class="dealership-list" id="dealership-list"></ul>
+    </section>
+
+    <section class="pane pane-edit">
+      <div class="pane-head">
+        <h2 id="current-dealership">Select a dealership</h2>
+        <div class="flags" id="current-flags"></div>
+      </div>
+      <div class="pane-body">
+        <label class="field-label" for="insights-box">Priority insights</label>
+        <textarea id="insights-box" class="mono" rows="9" spellcheck="false"></textarea>
+
+        <label class="field-label" for="summary-box">Summary</label>
+        <textarea id="summary-box" rows="4"></textarea>
+
+        <label class="field-label" for="sms-box">SMS <span class="hint" id="sms-count"></span></label>
+        <textarea id="sms-box" class="mono" rows="4" spellcheck="false"></textarea>
+
+        <div class="row-actions">
+          <button class="btn" id="save-edits">Save edits</button>
+          <button class="btn btn-primary" id="approve-next">&#10003; Approve &amp; next</button>
+          <button class="btn btn-quiet" id="skip-dealership">Skip</button>
+        </div>
+        <p class="blocked-note" id="approve-blocked" hidden></p>
+      </div>
+    </section>
+
+    <section class="pane pane-pdf">
+      <div class="pane-head">
+        <h2>Report</h2>
+        <div class="pdf-controls">
+          <select id="pdf-kind">
+            <option value="performance">Performance Intelligence</option>
+            <option value="sales">Sales (source)</option>
+            <option value="service">Service (source)</option>
+          </select>
+          <button class="btn btn-small" id="pdf-expand" title="Hide the dealership list and give the PDF more room">&#8596; Wider</button>
+          <button class="btn btn-small" id="pdf-newtab" title="Full browser PDF viewer in a new tab">New tab</button>
+          <button class="btn btn-small" id="open-pdf">Open in app</button>
+        </div>
+      </div>
+      <div class="pdf-frame-wrap">
+        <iframe id="pdf-frame" title="Source PDF"></iframe>
+        <p class="empty" id="pdf-empty">No PDF loaded.</p>
+      </div>
+    </section>
+  </div>
+</main>
+
+<!-- ============ STAGE 2 ============ -->
+<main class="stage" id="stage-queue">
+  <div class="runbar">
+    <button class="btn btn-small" id="tick-all">Tick all</button>
+    <button class="btn btn-small" id="untick-all">Untick all</button>
+    <span class="outlook-warn" id="outlook-warn" hidden>
+      <span id="outlook-warn-text"></span>
+      <button class="link" id="outlook-recheck">Re-check</button>
+    </span>
+    <span class="spacer"></span>
+    <button class="btn" id="save-eml" title="Write the ticked emails to disk as .eml files you can open in Outlook yourself">Save as .eml</button>
+    <button class="btn" id="save-drafts">Save as drafts</button>
+    <button class="btn btn-primary" id="save-pdfs" title="Write a PDF copy of each ticked email beside that dealership's source reports">Save PDF copies</button>
+  </div>
+
+  <div class="two-pane">
+    <section class="pane pane-queue">
+      <div class="pane-head"><h2>Approved</h2><span class="count" id="queue-count">0</span></div>
+      <div class="table-scroll">
+        <table class="queue-table">
+          <thead>
+            <tr><th class="tick-col">Ready</th><th>Dealership</th><th>To</th><th>Status</th></tr>
+          </thead>
+          <tbody id="queue-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="pane pane-email">
+      <div class="pane-head">
+        <h2 id="email-dealership">Select an approved dealership</h2>
+        <div class="pane-head-actions">
+          <button class="btn btn-small" id="open-reference">Report reference</button>
+          <button class="btn btn-small" id="open-html">Open in browser</button>
+        </div>
+      </div>
+      <div class="pane-body">
+        <div class="field-grid">
+          <label for="email-to">To</label><input id="email-to" type="text" autocomplete="off">
+          <label for="email-cc">CC</label><input id="email-cc" type="text" autocomplete="off">
+          <label for="email-bcc">BCC</label><input id="email-bcc" type="text" autocomplete="off">
+          <label for="email-subject">Subject</label><input id="email-subject" type="text" autocomplete="off">
+        </div>
+        <div class="email-tabs">
+          <button class="email-tab is-active" data-view="preview">HTML preview</button>
+          <button class="email-tab" data-view="body">Plain body</button>
+        </div>
+        <div class="email-view" id="email-view-preview">
+          <iframe id="email-frame" title="Email preview"></iframe>
+        </div>
+        <div class="email-view" id="email-view-body" hidden>
+          <textarea id="email-body" rows="16"></textarea>
+        </div>
+        <div class="row-actions">
+          <button class="btn" id="rebuild-email">Rebuild preview</button>
+          <button class="btn btn-primary" id="save-email">Save changes</button>
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<!-- ============ STAGE 3 ============ -->
+<main class="stage" id="stage-sms">
+  <div class="runbar">
+    <button class="btn btn-small" id="sms-refresh">Refresh</button>
+    <span class="spacer"></span>
+    <span class="hint" id="sms-summary"></span>
+    <button class="btn" id="sms-copy">Copy all</button>
+    <button class="btn" id="sms-save">Save as .txt</button>
+    <button class="btn" id="sms-export">Export CSV breakdown</button>
+  </div>
+  <section class="pane pane-sms">
+    <div class="pane-head"><h2>SMS messages</h2></div>
+    <textarea id="sms-doc" class="mono" spellcheck="false"></textarea>
+  </section>
+</main>
+
+<!-- ============ MODALS ============ -->
+<div class="modal" id="setup-modal" hidden>
+  <div class="modal-card">
+    <div class="modal-head"><h2>Set up Reporter</h2></div>
+    <div class="modal-body">
+      <p class="modal-note">This copy has not been used on this machine yet. Three paths and you are running. The branded template and its images are already bundled, and emails go out unsigned unless you add a sign-off in Settings.</p>
+      <div id="setup-fields"></div>
+      <p class="modal-note" id="setup-note" hidden></p>
+    </div>
+    <div class="modal-foot">
+      <span class="hint" id="setup-progress"></span>
+      <span class="spacer"></span>
+      <button class="btn" data-close>Skip for now</button>
+      <button class="btn btn-primary" id="setup-save">Save and start</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="settings-modal" hidden>
+  <div class="modal-card">
+    <div class="modal-head"><h2>Settings</h2><button class="icon-btn" data-close>&times;</button></div>
+    <div class="modal-body">
+      <p class="modal-note">Paths are on this machine. Nothing works until they point at real folders — they are deliberately not shipped.</p>
+      <div id="settings-fields"></div>
+      <div class="setting-row">
+        <label for="assembly-mode">Email assembly mode</label>
+        <select id="assembly-mode">
+          <option value="assembler">assembler</option>
+          <option value="legacy_msg">legacy_msg</option>
+        </select>
+      </div>
+      <div class="setting-row">
+        <label for="insight-engine">Insight engine</label>
+        <p class="desc">The funnel engine reads both reports as one month and writes the four
+          insights, the summary and the SMS from the figures rather than from each other. It
+          changes what a dealership reads and nothing else about how the month is produced, so a
+          month can be run on each and read side by side before committing.</p>
+        <p class="desc">AI assisted is the funnel engine plus a rewrite: the figures and the
+          findings are still calculated here, and a model is asked only to say them better.
+          Anything it returns is checked back against those figures and thrown away whole if a
+          number appears that nobody calculated, so a month never depends on it working. Needs a
+          key in a <code>.env</code> file beside the app — copy <code>.env.example</code> to
+          <code>.env</code> and fill it in.</p>
+        <select id="insight-engine">
+          <option value="rules">rules — the engine in use today</option>
+          <option value="funnel">funnel — sales funnel and bottom line</option>
+          <option value="ai">AI assisted — funnel figures, rewritten</option>
+        </select>
+        <div class="ai-status" id="ai-status">
+          <span class="ai-status-line" id="ai-status-line"></span>
+          <button class="btn btn-small" id="test-ai" type="button">Test connection</button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="performance-report">Performance Intelligence report</label>
+        <p class="desc">Builds the four-page report for each dealership from the workbook's
+          history tab, and shows it in the report pane on step 1. Because it reads the
+          history rather than the workbook's own report tabs, it can be produced for any
+          month the workbook covers. Needs Chromium; without it the month still runs and the
+          pane says so.</p>
+        <select id="performance-report">
+          <option value="on">Build it for every dealership</option>
+          <option value="off">Do not build it</option>
+        </select>
+        <div class="ai-status">
+          <span class="ai-status-line idle" id="performance-engine-line"></span>
+        </div>
+      </div>
+      <p class="modal-note" id="settings-path-note"></p>
+    </div>
+    <div class="modal-foot">
+      <span class="hint" id="settings-file-path"></span>
+      <span class="spacer"></span>
+      <button class="btn" data-close>Cancel</button>
+      <button class="btn btn-primary" id="save-settings">Save settings</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="browse-modal" hidden>
+  <div class="modal-card modal-wide">
+    <div class="modal-head"><h2 id="browse-title">Choose a folder</h2><button class="icon-btn" data-close>&times;</button></div>
+    <div class="modal-body">
+      <div class="browse-bar">
+        <button class="btn btn-small" id="browse-up" title="Parent folder">&#8593;</button>
+        <input id="browse-path" type="text" spellcheck="false" autocomplete="off">
+        <button class="btn btn-small" id="browse-go">Go</button>
+      </div>
+      <div class="browse-places" id="browse-places"></div>
+      <ul class="browse-list" id="browse-list"></ul>
+      <p class="modal-note" id="browse-note" hidden></p>
+    </div>
+    <div class="modal-foot">
+      <span class="hint" id="browse-selected"></span>
+      <span class="spacer"></span>
+      <button class="btn" data-close>Cancel</button>
+      <button class="btn btn-primary" id="browse-choose">Use this folder</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="contacts-modal" hidden>
+  <div class="modal-card modal-wide">
+    <div class="modal-head"><h2>Contacts</h2><button class="icon-btn" data-close>&times;</button></div>
+    <div class="modal-body">
+      <div class="contacts-bar">
+        <button class="btn btn-small" id="contacts-add-top">+ Add dealership</button>
+        <span class="hint" id="contacts-path"></span>
+      </div>
+      <p class="modal-note" id="contacts-note" hidden></p>
+      <div class="contacts-scroll" id="contacts-body"></div>
+    </div>
+    <div class="modal-foot">
+      <span class="hint" id="contacts-count"></span>
+      <span class="spacer"></span>
+      <button class="btn" data-close>Close</button>
+      <button class="btn btn-primary" id="contacts-save">Save contacts</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="portfolio-modal" hidden>
+  <div class="modal-card modal-wide">
+    <div class="modal-head"><h2>My dealerships</h2><button class="icon-btn" data-close>&times;</button></div>
+    <div class="modal-body">
+      <p class="modal-note">Tick the dealerships you report on. Runs and the month list then read only those workbooks. Tick none to run the whole library.</p>
+      <p class="modal-note warn" id="portfolio-missing" hidden></p>
+      <div class="browse-bar">
+        <input id="portfolio-filter" type="search" placeholder="Filter by name" spellcheck="false" autocomplete="off">
+        <button class="btn btn-small" id="portfolio-tick-shown">Tick shown</button>
+        <button class="btn btn-small" id="portfolio-clear">Clear all</button>
+      </div>
+      <ul class="browse-list portfolio-list" id="portfolio-list"></ul>
+    </div>
+    <div class="modal-foot">
+      <span class="hint" id="portfolio-count"></span>
+      <span class="spacer"></span>
+      <button class="btn" data-close>Cancel</button>
+      <button class="btn btn-primary" id="portfolio-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="reference-modal" hidden>
+  <div class="modal-card modal-wide">
+    <div class="modal-head"><h2>Report reference</h2><button class="icon-btn" data-close>&times;</button></div>
+    <div class="modal-body" id="reference-body"></div>
+    <div class="modal-foot"><span class="spacer"></span><button class="btn" data-close>Close</button></div>
+  </div>
+</div>
+
+<div class="modal" id="results-modal" hidden>
+  <div class="modal-card">
+    <div class="modal-head"><h2 id="results-title">Result</h2><button class="icon-btn" data-close>&times;</button></div>
+    <div class="modal-body" id="results-body"></div>
+    <div class="modal-foot"><span class="spacer"></span><button class="btn btn-primary" data-close>Close</button></div>
+  </div>
+</div>
+
+<div class="busy" id="busy" hidden><div class="busy-card"><div class="spinner"></div><span id="busy-text">Working…</span></div></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

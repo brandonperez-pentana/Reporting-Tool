@@ -1,0 +1,19 @@
+# Runtime dependencies for Reporter (browser UI).
+# Requires Windows with Python 3.11 or 3.12 for sending and PDF archiving, which
+# need classic Outlook and Word. Everything else runs on Python 3.10+ anywhere.
+#
+# This is the desktop app's requirements.txt minus the desktop app: no
+# customtkinter and no tkinterweb, so nothing here needs the native Tkhtml DLL
+# (libtkhtml3.0.dll) that managed Windows builds tend to block. The web UI is
+# served by the standard library and has no dependency of its own.
+
+pdfplumber>=0.11.0,<0.12
+python-docx>=1.1.0,<2
+docxtpl>=0.16.0,<1          # renders the DOCX report template
+pandas>=2.2.0,<4
+openpyxl>=3.1.0,<4          # the enhanced review-required export
+Jinja2>=3.1.0,<4
+extract-msg>=0.48.0,<1      # reads the branded .msg email template and its inline images
+pywin32>=308; platform_system == "Windows"   # Outlook and Word automation
+playwright>=1.40,<2       # renders the Performance Intelligence report; after installing,
+                          # run: python -m playwright install chromium

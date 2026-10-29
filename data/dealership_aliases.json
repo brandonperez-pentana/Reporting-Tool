@@ -1,0 +1,6 @@
+{
+  "aliases": [
+    {"name": "Bartons Capalaba", "matches": ["Bartons Cap", "Barton Cap"]},
+    {"name": "Bartons Wynnum", "matches": ["Bartons Wyn", "Barton Wyn"]}
+  ]
+}

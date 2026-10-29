@@ -1,0 +1,23 @@
+Subject: Your Monthly DealerSocket Snapshot - {{ month_name }} {{ year }}
+
+Hi {{ name }},
+
+Attached are your Sales and Service Reports for {{ month_name }}, along with a concise summary of the key insights from this month. Please take a moment to review the highlights below.
+
+Key Insights:
+• {{ insight_1 }}
+• {{ insight_2 }}
+• {{ insight_3 }}
+• {{ insight_4 }}
+{% if summary %}
+
+Summary
+{{ summary }}
+{% endif %}
+
+If you have any questions or would like to explore any of these points in more detail, feel free to reach out and I’ll be happy to help.
+{% if sender_name or sender_title %}
+Best regards,
+{{ sender_name }}
+{{ sender_title }}
+{% endif %}
