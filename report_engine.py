@@ -615,27 +615,12 @@ def run_reporting(
     accounts_path = Path(accounts_folder).expanduser().resolve()
     pdf_path = Path(pdf_folder).expanduser().resolve() if pdf_folder else None
     output_path = Path(output_folder).expanduser().resolve()
-    template = Path(template_path).expanduser().resolve() if template_path else None
-
-    ui_settings = load_settings()
-    assets_raw = (ui_settings.get("email_template_assets_folder") or "").strip()
-    email_assets_folder = Path(assets_raw).expanduser().resolve() if assets_raw else None
-    if email_assets_folder and not email_assets_folder.is_dir():
-        logging.getLogger("report_engine").warning(
-            "email_template_assets_folder is not a directory | path=%s",
-            email_assets_folder,
-        )
-        email_assets_folder = None
-    assembly_mode = (ui_settings.get("email_assembly_mode") or "assembler").strip().lower()
-    if assembly_mode not in ("assembler", "legacy_msg"):
-        assembly_mode = "assembler"
-
-    if assembly_mode == "legacy_msg":
-        email_builder.validate_template_file(template)
-    else:
-        logging.getLogger("report_engine").info(
-            "Using EmailAssembler (primary path) | .msg template not used for body; skipping .msg file validation."
-        )
+    # Keep accepting template_path for older callers, but never use a user-supplied
+    # email template. The branded Jinja templates and assets ship with the app.
+    template = None
+    email_assets_folder = (Path(__file__).resolve().parent / "email_assets").resolve()
+    assembly_mode = "assembler"
+    logging.getLogger("report_engine").info("Using the bundled email templates and assets.")
 
     recipient_mapping: dict[str, dict[str, str]] = {}
     recipient_mapping_resolved: Path | None = None
@@ -1134,85 +1119,56 @@ def build_email_preview(
 
     _log = logging.getLogger("report_engine")
 
-    if session.email_assembly_mode == "legacy_msg":
-        _log.warning("Using legacy fallback (unexpected) | .msg template path for email body")
-        preview = email_builder.build_email_preview(
-            template_path=session.template_path,
-            dealership_name=state.result.dealership_name,
-            month_label=state.result.month_label,
-            executive_summary=state.executive_summary_text,
-            priority_insights=pi_raw,
-            summary=summary_resolved,
-            sms_version=state.sms_text,
-            sentiment=state.result.sentiment,
-            review_reason_tags=state.result.review_reason_tags or [],
-            to_recipients=state.to_recipients,
-            cc_recipients=state.cc_recipients,
-            attachments=_attachments_for_result(state.result),
-            greeting_name=greeting,
-            sales_report_path=sales_p,
-            service_report_path=service_p,
-            sender_name=_sender_identity()[0],
-            sender_title=_sender_identity()[1],
-        )
-        preview["email_context"] = email_context
-        preview["email_assembler"] = False
-        preview["pipeline_used"] = "legacy"
-        preview["ui_bound_to"] = "legacy"
-        if not str(preview.get("html_body_outlook") or "").strip():
-            preview["html_body_outlook"] = str(preview.get("html_body", ""))
-    else:
-        _log.info("Using EmailAssembler (primary path)")
-        assembled = email_assembler.assemble_dealership_email(
-            dealership_name=state.result.dealership_name,
-            month_label=state.result.month_label,
-            greeting_name=greeting,
-            priority_insights=pi_raw,
-            summary_resolved=summary_resolved,
-            to_recipients=state.to_recipients,
-            cc_recipients=state.cc_recipients,
-            pdf_attachments=_attachments_for_result(state.result),
-            report_reference=ref_for_mapping,
-            assets_dir=session.email_template_assets_folder,
-            sales_report_path=sales_p,
-            service_report_path=service_p,
-            template_path=session.template_path,
-            sender_name=_sender_identity()[0],
-            sender_title=_sender_identity()[1],
-        )
-        preview = email_assembler.assembled_email_to_preview_dict(
-            assembled,
-            to_recipients=state.to_recipients,
-            cc_recipients=state.cc_recipients,
-            bcc_recipients=state.bcc_recipients,
-        )
-        email_context = dict(assembled.email_context)
-        preview["email_context"] = email_context
-        preview["plain_text_body"] = assembled.plain_text_body
-        preview["html_body"] = assembled.html_body
-        preview["html_body_outlook"] = assembled.html_body_outlook
-        preview["subject"] = assembled.subject
-        preview["body"] = assembled.plain_text_body
-        preview["body_text"] = assembled.plain_text_body
-        preview["preview_text"] = assembled.plain_text_body
-        preview["pipeline_used"] = "assembler"
-        preview["ui_bound_to"] = "assembler"
+    _log.info("Using bundled EmailAssembler")
+    assembled = email_assembler.assemble_dealership_email(
+        dealership_name=state.result.dealership_name,
+        month_label=state.result.month_label,
+        greeting_name=greeting,
+        priority_insights=pi_raw,
+        summary_resolved=summary_resolved,
+        to_recipients=state.to_recipients,
+        cc_recipients=state.cc_recipients,
+        pdf_attachments=_attachments_for_result(state.result),
+        report_reference=ref_for_mapping,
+        assets_dir=session.email_template_assets_folder,
+        sales_report_path=sales_p,
+        service_report_path=service_p,
+        sender_name=_sender_identity()[0],
+        sender_title=_sender_identity()[1],
+    )
+    preview = email_assembler.assembled_email_to_preview_dict(
+        assembled,
+        to_recipients=state.to_recipients,
+        cc_recipients=state.cc_recipients,
+        bcc_recipients=state.bcc_recipients,
+    )
+    email_context = dict(assembled.email_context)
+    preview["email_context"] = email_context
+    preview["plain_text_body"] = assembled.plain_text_body
+    preview["html_body"] = assembled.html_body
+    preview["html_body_outlook"] = assembled.html_body_outlook
+    preview["subject"] = assembled.subject
+    preview["body"] = assembled.plain_text_body
+    preview["body_text"] = assembled.plain_text_body
+    preview["preview_text"] = assembled.plain_text_body
+    preview["pipeline_used"] = "assembler"
+    preview["ui_bound_to"] = "assembler"
 
-        pad_chk = email_builder.INSIGHT_SLOT_PAD
-        plain_chk = assembled.plain_text_body
-        missing_asm: list[str] = []
-        for slot_name in ("insight_1", "insight_2", "insight_3", "insight_4"):
-            slot_val = str(email_context.get(slot_name, ""))
-            if not slot_val.strip() or slot_val == pad_chk:
-                missing_asm.append(slot_name)
-            elif slot_val.strip() not in plain_chk:
-                missing_asm.append(slot_name)
-        if missing_asm:
-            _log.error(
-                "ASSEMBLER OUTPUT MISSING CONTENT | dealership=%r | missing=%s",
-                state.result.dealership_name,
-                missing_asm,
-            )
+    pad_chk = email_builder.INSIGHT_SLOT_PAD
+    plain_chk = assembled.plain_text_body
+    missing_asm: list[str] = []
+    for slot_name in ("insight_1", "insight_2", "insight_3", "insight_4"):
+        slot_val = str(email_context.get(slot_name, ""))
+        if not slot_val.strip() or slot_val == pad_chk:
+            missing_asm.append(slot_name)
+        elif slot_val.strip() not in plain_chk:
+            missing_asm.append(slot_name)
+    if missing_asm:
+        _log.error(
+            "ASSEMBLER OUTPUT MISSING CONTENT | dealership=%r | missing=%s",
+            state.result.dealership_name,
+            missing_asm,
+        )
 
     audit, rci, rcs = email_builder.validate_rendered_email_mapping(
         preview_text=str(preview.get("preview_text", "")),

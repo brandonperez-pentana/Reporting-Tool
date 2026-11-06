@@ -89,10 +89,8 @@ def _load_asset_manifest(assets_dir: Path | None) -> dict[str, str]:
     return base
 
 
-# Link targets carried over from the source .msg template. ServiceNow is written
-# there without a scheme ("servicenow.com"), which mail clients treat as a
-# relative link and fail to open, so it is qualified here.
-HELP_PORTAL_URL = "https://servicenow.com"
+# Link targets used by the bundled email template.
+HELP_PORTAL_URL = "https://www.pentanasolutions.com/customer-service-portal"
 FOOTER_LOGO_URL = "https://www.pentanasolutions.com/"
 
 

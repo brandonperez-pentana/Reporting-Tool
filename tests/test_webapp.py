@@ -309,10 +309,12 @@ class FirstRunTests(unittest.TestCase):
         self.assertFalse(payload["first_run"])
         self.assertEqual(payload["missing_required"], [])
 
-    def test_the_bundled_branding_folder_is_offered_as_a_default(self) -> None:
-        """A new copy renders the branded email without the operator finding images."""
+    def test_the_bundled_branding_assets_are_not_a_user_setting(self) -> None:
+        """The app uses its packaged assets without asking the operator to locate them."""
         payload = api.get_settings()
-        self.assertTrue(payload["default_assets_folder"].endswith("email_assets"))
+        self.assertNotIn("default_assets_folder", payload)
+        self.assertNotIn("email_template_assets_folder", payload)
+
 class DealershipPickerTests(unittest.TestCase):
     """Contacts match reports by an exact string, so the name is picked, not typed.
 

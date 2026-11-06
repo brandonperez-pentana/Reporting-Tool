@@ -194,11 +194,6 @@ def check_path(request: Request) -> Response:
     return json_response(api.path_check(request.json()))
 
 
-@route("POST", r"/api/settings/validate-template")
-def validate_template(request: Request) -> Response:
-    return json_response(api.validate_template(request.json()))
-
-
 @route("POST", r"/api/browse")
 def browse(request: Request) -> Response:
     return json_response(api.browse(request.json()))

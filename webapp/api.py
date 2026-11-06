@@ -183,13 +183,10 @@ SETTING_KEYS = (
     "accounts_folder",
     "pdf_source_folder",
     "output_folder",
-    "template_path",
     "recipient_mapping_path",
     "month",
     "sent_email_pdf_folder",
     "test_send_address",
-    "email_template_assets_folder",
-    "email_assembly_mode",
     "sender_name",
     "sender_title",
     "eml_export_folder",
@@ -210,7 +207,6 @@ def get_settings() -> dict[str, Any]:
     payload["portfolio"] = portfolio_from(settings)
     payload["settings_path"] = str(settings_manager.get_settings_path())
     payload["default_contacts_path"] = str(ensure_contacts_file(ROOT / "data" / "contacts.csv"))
-    payload["default_assets_folder"] = str(ROOT / "email_assets")
     payload["missing_required"] = [
         key for key in REQUIRED_SETTING_KEYS if not str(settings.get(key, "") or "").strip()
     ]
@@ -492,11 +488,6 @@ def month_options() -> dict[str, Any]:
     }
 
 
-def validate_template(payload: dict[str, Any]) -> dict[str, Any]:
-    with _ENGINE_LOCK:
-        return report_engine.validate_template(str(payload.get("path") or "").strip() or None)
-
-
 # --- reporting run --------------------------------------------------------------
 
 def start_reporting(payload: dict[str, Any]) -> dict[str, Any]:
@@ -507,7 +498,6 @@ def start_reporting(payload: dict[str, Any]) -> dict[str, Any]:
     accounts = str(payload.get("accounts_folder") or settings.get("accounts_folder") or "").strip()
     pdf_folder = str(payload.get("pdf_source_folder") or settings.get("pdf_source_folder") or "").strip()
     output = str(payload.get("output_folder") or settings.get("output_folder") or "").strip()
-    template = str(payload.get("template_path") or settings.get("template_path") or "").strip()
     contacts = str(payload.get("recipient_mapping_path") or settings.get("recipient_mapping_path") or "").strip()
     month = str(payload.get("month") or settings.get("month") or "").strip()
     portfolio = [] if payload.get("all_dealerships") else portfolio_from(settings)
@@ -540,7 +530,7 @@ def start_reporting(payload: dict[str, Any]) -> dict[str, Any]:
                     accounts_folder=accounts,
                     output_folder=output,
                     month=month,
-                    template_path=template or None,
+                    template_path=None,
                     recipient_mapping_path=contacts or None,
                     progress_callback=on_progress,
                     portfolio=portfolio or None,

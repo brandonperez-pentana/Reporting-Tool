@@ -16,11 +16,8 @@ DEFAULT_SETTINGS = {
     # they sit beside the workbooks, in the accounts folder.
     "pdf_source_folder": "",
     "output_folder": "",
-    "template_path": "",
     "recipient_mapping_path": "",
     "month": "",
-    "email_template_assets_folder": "",
-    "email_assembly_mode": "assembler",
     # Where PDF copies of sent emails are archived. Empty means the operator has
     # not chosen one yet and will be prompted at send time.
     "sent_email_pdf_folder": "",

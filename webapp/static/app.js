@@ -236,10 +236,6 @@ function updateSetupProgress(values) {
 
 $('setup-save').addEventListener('click', () => guard(async () => {
   const payload = { ...setupValues };
-  // Point at the bundled branding unless this operator already chose their own.
-  if (!state.settings.email_template_assets_folder && state.settings.default_assets_folder) {
-    payload.email_template_assets_folder = state.settings.default_assets_folder;
-  }
   busy(true, 'Saving setup…');
   state.settings = await api('/api/settings', { method: 'POST', body: payload });
   busy(false);
@@ -869,11 +865,9 @@ const SETTING_FIELDS = [
   ['accounts_folder', 'Accounts folder', 'folder', '', 'The master workbooks, one per dealership.'],
   ['pdf_source_folder', 'PDF source folder', 'folder', '', 'Optional. Where each dealership’s folder of Sales/Service PDFs lives. Leave empty if those folders sit in the accounts folder.'],
   ['output_folder', 'Output folder', 'folder', '', 'Where generated insights and reports are written.'],
-  ['template_path', 'Template path', 'file', '.msg,.oft', 'The branded .msg email template. Its inline images are read straight out of it.'],
   ['recipient_mapping_path', 'Recipient mapping', 'file', '.csv', 'contacts.csv mapping dealerships to contact names and addresses.'],
   ['default_bcc', 'Always BCC', 'any', '', 'Addresses BCC’d on every email, on top of anything a contact row asks for. Separate them with semicolons.'],
   ['sent_email_pdf_folder', 'PDF copies folder', 'folder', '', 'Optional. Leave empty and each PDF copy is saved beside that dealership’s own source reports.'],
-  ['email_template_assets_folder', 'Email template assets', 'folder', '', 'Optional. Inline image assets for the branded email.'],
   ['eml_export_folder', 'Save .eml files to', 'folder', '', 'Where “Save as .eml” writes emails you want to import into Outlook by hand.'],
   ['sender_name', 'Sign-off name', 'any', '', 'Optional. Leave both sign-off fields empty and the email carries no signature at all.'],
   ['sender_title', 'Sign-off title', 'any', '', 'Optional. Shown under the name, e.g. “CRM Consultant”.'],
@@ -928,10 +922,9 @@ function renderSettings() {
     row.append(note);
     wrap.append(row);
   });
-  $('assembly-mode').value = state.settings.email_assembly_mode || 'assembler';
   $('insight-engine').value = state.settings.insight_engine || 'rules';
   $('performance-report').value = state.settings.performance_report || 'on';
-  ['assembly-mode', 'insight-engine', 'performance-report'].forEach((id) => { $(id).disabled = !canEdit('insight_engine'); });
+  ['insight-engine', 'performance-report'].forEach((id) => { $(id).disabled = !canEdit('insight_engine'); });
   $('performance-engine-line').textContent = `Rendering with: ${state.settings.performance_engine || 'unknown'}`;
   $('settings-file-path').textContent = `Saved to ${state.settings.settings_path || 'user_settings.json'}`;
   renderAiStatus();
@@ -980,7 +973,6 @@ $('open-settings').addEventListener('click', () => { renderSettings(); openModal
 
 $('save-settings').addEventListener('click', () => guard(async () => {
   const payload = {
-    email_assembly_mode: $('assembly-mode').value,
     insight_engine: $('insight-engine').value,
     performance_report: $('performance-report').value,
   };

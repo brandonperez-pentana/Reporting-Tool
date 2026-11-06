@@ -67,7 +67,6 @@ def main(month: str | None = None, output_dir: str | None = None, all_dealership
     resolved_month = month or settings.get("month") or datetime.now().strftime("%b %Y")
     month_num, year_num, month_label = core.parse_month_label(resolved_month)
     comparison_month = _previous_month_label(month_label)
-    template = settings.get("template_path")
     contacts = settings.get("recipient_mapping_path")
     portfolio = [] if all_dealerships else [str(n) for n in settings.get("portfolio") or [] if str(n).strip()]
     pdf_folder = str(settings.get("pdf_source_folder") or "").strip()
@@ -83,7 +82,7 @@ def main(month: str | None = None, output_dir: str | None = None, all_dealership
 
     try:
         session = report_engine.run_reporting(
-            accounts, output, month_label, template, contacts, portfolio=portfolio or None,
+            accounts, output, month_label, None, contacts, portfolio=portfolio or None,
             pdf_folder=pdf_folder or None,
         )
     except Exception as exc:
