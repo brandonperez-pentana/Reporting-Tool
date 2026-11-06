@@ -457,19 +457,6 @@ def _bcc_with_defaults(row_bcc: str) -> str:
     )
 
 
-def _sender_identity() -> tuple[str, str]:
-    """Who signs the email, from this operator's settings.
-
-    Both blank is the shipped default and means no sign-off block at all, so a
-    new install never signs mail with whoever built the package.
-    """
-    settings = load_settings()
-    return (
-        str(settings.get("sender_name") or "").strip(),
-        str(settings.get("sender_title") or "").strip(),
-    )
-
-
 def _attachments_for_result(result: reporting_core.DealershipResult) -> list[Path]:
     attachments: list[Path] = []
     for pdf_path in [result.sales_pdf, result.service_pdf]:
@@ -1133,8 +1120,6 @@ def build_email_preview(
         assets_dir=session.email_template_assets_folder,
         sales_report_path=sales_p,
         service_report_path=service_p,
-        sender_name=_sender_identity()[0],
-        sender_title=_sender_identity()[1],
     )
     preview = email_assembler.assembled_email_to_preview_dict(
         assembled,

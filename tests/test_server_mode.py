@@ -42,12 +42,25 @@ class ServerModeCase(unittest.TestCase):
 
 
 class PerUserSettingsTests(ServerModeCase):
+    def test_legacy_sign_off_values_are_not_returned_as_settings(self) -> None:
+        legacy = {
+            "accounts_folder": "D:\\Library",
+            "output_folder": "D:\\Output",
+            "recipient_mapping_path": "D:\\contacts.csv",
+            "sender_name": "Previous operator",
+            "sender_title": "CRM Consultant",
+        }
+        with settings_manager.as_user(ALICE):
+            with mock.patch.object(settings_manager, "load_settings", return_value=legacy):
+                settings = api.get_settings()
+        self.assertNotIn("sender_name", settings)
+        self.assertNotIn("sender_title", settings)
+
     def test_each_user_keeps_their_own_portfolio(self) -> None:
         with settings_manager.as_user(ALICE):
-            api.save_settings({"portfolio": ["Demo Site 1.xlsx"], "sender_name": "Alice"})
+            api.save_settings({"portfolio": ["Demo Site 1.xlsx"]})
         with settings_manager.as_user(BOB):
             self.assertEqual(api.get_settings()["portfolio"], [])
-            self.assertEqual(api.get_settings()["sender_name"], "")
         with settings_manager.as_user(ALICE):
             self.assertEqual(api.get_settings()["portfolio"], ["Demo Site 1.xlsx"])
 
@@ -74,16 +87,16 @@ class PerUserSettingsTests(ServerModeCase):
         """The settings form posts every field, including the read-only ones."""
         with settings_manager.as_user(ALICE):
             current = api.get_settings()
-            api.save_settings({"accounts_folder": current["accounts_folder"], "sender_title": "CRM"})
-            self.assertEqual(api.get_settings()["sender_title"], "CRM")
+            api.save_settings({"accounts_folder": current["accounts_folder"]})
+            self.assertEqual(api.get_settings()["accounts_folder"], current["accounts_folder"])
 
     def test_the_user_file_never_holds_shared_keys(self) -> None:
         with settings_manager.as_user("CORP\\admin"):
-            api.save_settings({"accounts_folder": "D:\\Library", "sender_name": "Admin"})
+            api.save_settings({"accounts_folder": "D:\\Library", "default_bcc": "team@example.com"})
             personal = json.loads(settings_manager.get_settings_path().read_text(encoding="utf-8"))
         shared = json.loads(settings_manager.shared_settings_path().read_text(encoding="utf-8"))
         self.assertNotIn("accounts_folder", personal)
-        self.assertNotIn("sender_name", shared)
+        self.assertNotIn("default_bcc", shared)
 
     def test_a_login_cannot_escape_the_users_folder(self) -> None:
         for login in ("CORP\\..\\..\\evil", "../../evil", "a/b\\c", "CORP\\x:y"):

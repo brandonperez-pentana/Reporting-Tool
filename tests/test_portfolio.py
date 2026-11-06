@@ -76,7 +76,7 @@ class PortfolioSettingsTests(unittest.TestCase):
             with mock.patch.object(api.settings_manager, "get_settings_path", return_value=path):
                 saved = api.save_settings({"portfolio": ["Demo Site 1.xlsx", "Demo Site 2.xlsx"]})
                 self.assertEqual(saved["portfolio"], ["Demo Site 1.xlsx", "Demo Site 2.xlsx"])
-                api.save_settings({"sender_name": "Sam"})
+                api.save_settings({"default_bcc": "team@example.com"})
             self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["portfolio"],
                              ["Demo Site 1.xlsx", "Demo Site 2.xlsx"])
 

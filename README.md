@@ -150,7 +150,6 @@ The rest lives in **⚙ Settings** and can wait until you need it:
 | PDF copies folder | Optional. Leave it empty and each PDF copy is written beside that dealership's own source reports. |
 | Always BCC | Optional. Addresses BCC'd on every email, on top of anything a contact row asks for. Semicolon-separated. Empty in a fresh copy. |
 | Email template assets | The branded images. Points at the bundled `email_assets/` automatically — change it only to use your own. |
-| Sign-off name / title | Optional. See below. |
 | Template path | Only used if you switch assembly mode to `legacy_msg`. Leave it empty. |
 
 Settings are saved to `user_settings.json` beside the app. If the install location is
@@ -189,16 +188,6 @@ and de-duplicated, and the greeting names them ("Hi Sam and Pat,").
 honoured, so a `contacts.csv` from an older build keeps behaving the way its author
 meant. `active` has to be `yes` for a dealership to be sendable, and new contacts added
 in the app are active.
-
-### Sign-off
-
-Emails go out **unsigned** unless you say otherwise: no name, no title, no "Best
-regards" — the body simply ends. That is deliberate, so a copy handed to someone else
-never signs their mail with the previous owner's name.
-
-To add one, fill in **Sign-off name** and **Sign-off title** in Settings. Fill in one and
-you get one line; leave both empty and the block is skipped entirely rather than leaving
-a gap under "Best regards,".
 
 ## What goes in each email
 

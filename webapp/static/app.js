@@ -869,8 +869,6 @@ const SETTING_FIELDS = [
   ['default_bcc', 'Always BCC', 'any', '', 'Addresses BCC’d on every email, on top of anything a contact row asks for. Separate them with semicolons.'],
   ['sent_email_pdf_folder', 'PDF copies folder', 'folder', '', 'Optional. Leave empty and each PDF copy is saved beside that dealership’s own source reports.'],
   ['eml_export_folder', 'Save .eml files to', 'folder', '', 'Where “Save as .eml” writes emails you want to import into Outlook by hand.'],
-  ['sender_name', 'Sign-off name', 'any', '', 'Optional. Leave both sign-off fields empty and the email carries no signature at all.'],
-  ['sender_title', 'Sign-off title', 'any', '', 'Optional. Shown under the name, e.g. “CRM Consultant”.'],
 ];
 
 function renderSettings() {

@@ -187,8 +187,6 @@ SETTING_KEYS = (
     "month",
     "sent_email_pdf_folder",
     "test_send_address",
-    "sender_name",
-    "sender_title",
     "eml_export_folder",
     "default_bcc",
     "insight_engine",

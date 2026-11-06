@@ -24,10 +24,6 @@ DEFAULT_SETTINGS = {
     # Address used by "Send test to me" so a whole batch can be previewed in a
     # real inbox before anything reaches a dealership.
     "test_send_address": "",
-    # Sign-off. Blank means no signature block is rendered at all, which is the
-    # default: a fresh install has no idea who is running it.
-    "sender_name": "",
-    "sender_title": "",
     # Where "Save as .eml" writes approved emails for manual import into Outlook.
     "eml_export_folder": "",
     # "rules" (default) or "funnel". The funnel engine reads the month model and
@@ -62,8 +58,6 @@ USER_SETTING_KEYS = frozenset({
     "output_folder",
     "sent_email_pdf_folder",
     "test_send_address",
-    "sender_name",
-    "sender_title",
     "eml_export_folder",
     "default_bcc",
     "window",
