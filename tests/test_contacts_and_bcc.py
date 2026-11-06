@@ -231,13 +231,14 @@ class ContactsPanelTests(unittest.TestCase):
         folder = Path(tempfile.mkdtemp(prefix="save-"))
         path = folder / "contacts.csv"
         path.write_text(HEADER, encoding="utf-8")
-        result = api.save_contacts({
-            "path": str(path),
-            "rows": [
-                {"dealership": "A Motors", "contact_name": "Sam", "email": "sam@example.com"},
-                {"dealership": "B Motors", "contact_name": "Pat", "email": "pat@example.com"},
-            ],
-        })
+        with mock.patch.object(api.settings_manager, "save_settings"):
+            result = api.save_contacts({
+                "path": str(path),
+                "rows": [
+                    {"dealership": "A Motors", "contact_name": "Sam", "email": "sam@example.com"},
+                    {"dealership": "B Motors", "contact_name": "Pat", "email": "pat@example.com"},
+                ],
+            })
         self.assertEqual(result["rows"], 2)
         self.assertEqual(result["dealerships"], ["A Motors", "B Motors"])
         self.assertEqual(len(result["contacts"]["rows"]), 2, "both rows must reach the file")

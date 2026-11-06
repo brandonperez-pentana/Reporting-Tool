@@ -315,9 +315,23 @@ class PlaceholderMonthsTests(unittest.TestCase):
             self.assertNotIn(claim, joined)
         self.assertIn("no sales or service figures", joined)
 
+    def test_fallback_generation_keeps_sms_explicitly_non_sendable(self) -> None:
+        result = core.generate_insights_from_metrics(
+            {}, "blocked", "Demo Site 1", "Jul 2026"
+        )
+        self.assertIn("no figures were available", result[1].lower())
+        self.assertTrue(result[2].startswith("Not for sending:"), result[2])
+
     def test_a_placeholder_month_is_not_padded_to_four(self) -> None:
         bullets, _, _ = core.generate_placeholder_insights()
         self.assertEqual(len(core.ensure_four_priority_insights(bullets, metrics=None, pad=False)), len(bullets))
+
+    def test_a_placeholder_does_not_publish_partial_metrics_as_findings(self) -> None:
+        partial_metrics = {"sales_total_deals": metric()}
+        self.assertEqual(
+            core.ensure_four_priority_insights([], metrics=partial_metrics, pad=False),
+            [],
+        )
 
     def test_a_real_month_still_pads_to_four(self) -> None:
         self.assertEqual(len(core.ensure_four_priority_insights(["One fact."], metrics=None)), 4)

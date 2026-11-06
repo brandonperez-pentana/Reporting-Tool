@@ -210,16 +210,17 @@ def append_contact_email_wiring_validation(record: dict[str, Any]) -> None:
     _append_diagnostic(CONTACT_EMAIL_WIRING_PATH, payload)
 
 
-def reload_session_recipient_mapping() -> None:
+def reload_session_recipient_mapping(mapping_path: str | Path | None = None) -> None:
     """Reload contacts from disk into the active session and clear stale email previews."""
     session = _ensure_session()
-    path = session.recipient_mapping_path
+    path = mapping_path if mapping_path is not None else session.recipient_mapping_path
     if path is None:
         return
     resolved_path = Path(path).expanduser().resolve()
     if not resolved_path.exists():
         return
     session.recipient_mapping = email_builder.load_recipient_mappings(resolved_path)
+    session.recipient_mapping_path = resolved_path
     for st in session.dealerships.values():
         r = email_builder.resolve_contact_for_dealership(st.result.dealership_name, session.recipient_mapping)
         # Only rebuild the dealerships whose contact details actually moved.
@@ -337,14 +338,9 @@ def default_month_label() -> str:
 
 
 _MONTH_TOKEN_RE = re.compile(
-    r"(january|february|march|april|may|june|july|august|september|october|november|december"
-    r"|jan|feb|mar|apr|jun|jul|aug|sept|sep|oct|nov|dec)[\s_\-]+((?:19|20)\d{2})",
+    rf"({reporting_core.MONTH_NAME_PATTERN})\.?[\s_\-]+((?:19|20)\d{{2}})",
     re.IGNORECASE,
 )
-_MONTH_NUMBER_BY_PREFIX = {
-    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
-    "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
-}
 
 
 def detect_available_report_months(
@@ -382,7 +378,7 @@ def detect_available_report_months(
             if scanned > 8000:
                 break
             for name, year in _MONTH_TOKEN_RE.findall(pdf.stem):
-                month_number = _MONTH_NUMBER_BY_PREFIX.get(name[:3].lower())
+                month_number = reporting_core.month_from_name(name)
                 if month_number:
                     found.add((int(year), month_number))
     except OSError:

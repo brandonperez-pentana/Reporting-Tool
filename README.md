@@ -31,26 +31,28 @@ first screen of the installer, and double-click the file again.
 <details><summary>Doing it by hand instead</summary>
 
 ```powershell
-cd <wherever-you-unzipped-Reporter-Web>
+Set-Location "C:\Reporter"  # Replace with the downloaded repository folder.
 py -3.12 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements-web.txt
-python reporter_web.py
+.\.venv\Scripts\python.exe -m pip install -r requirements-web.txt
+.\.venv\Scripts\python.exe -m playwright install chromium
+.\.venv\Scripts\python.exe .\reporter_web.py
 ```
 
-`py`, `python` and `pip` are only recognised if Python was installed with **Add to PATH**
-ticked — which is why the launcher exists. Without it all four lines fail with
-"is not recognized as the name of a cmdlet", which says nothing about the real cause.
-Call the interpreter by its full path instead:
+If `py` is not recognised, install Python 3.12 using your company's approved process,
+or call the installed interpreter by its full path to create the environment:
 
 ```powershell
-& "C:\Users\<you>\AppData\Local\Programs\Python\Python312\python.exe" -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements-web.txt
-.\.venv\Scripts\python.exe reporter_web.py
+& "C:\Program Files\Python312\python.exe" -m venv .venv
 ```
 
+That path is an example; use the actual Python installation path on the new machine.
+Then run the dependency installation and startup commands above.
 Calling `.venv\Scripts\python.exe` directly also sidesteps `Activate.ps1`, which a
 managed machine's execution policy often blocks.
+
+Chromium is used for Performance Intelligence PDF reports. If its download is blocked,
+Reporter can fall back to installed Microsoft Edge or Google Chrome; Settings shows
+whether report rendering is available.
 
 </details>
 
@@ -58,13 +60,74 @@ It prints the URL and opens `http://127.0.0.1:8765` in your default browser. Lea
 PowerShell window open — closing it stops the server. **Ctrl+C** to stop.
 
 ```powershell
-python reporter_web.py --port 9000     # if 8765 is taken
-python reporter_web.py --no-browser    # start it, open the tab yourself
+.\.venv\Scripts\python.exe .\reporter_web.py --port 9000  # if 8765 is taken
+.\.venv\Scripts\python.exe .\reporter_web.py --no-browser
 ```
 
 Nothing here needs `libtkhtml3.0.dll` or any other native UI library: the server is
 Python's own `http.server` and the page is plain HTML, CSS and JavaScript with no
 framework and no CDN. It works on a machine with no outbound network access.
+
+## Starting on the company server
+
+The Python path must belong to the **server**, not another user's PC. Do not copy a
+virtual environment from your workstation: download or clone the repository, install
+Python 3.12 on the server, and create its own `.venv` using the setup steps above.
+The installation account needs write access to the repository folder and access to
+the approved Python package source (and a browser download if using Chromium).
+
+### Local use on the server (for example, through Remote Desktop)
+
+After the one-time setup, run these commands in PowerShell each time:
+
+```powershell
+Set-Location "C:\Reporter"  # Replace with the downloaded repository folder.
+& ".\.venv\Scripts\python.exe" ".\reporter_web.py" --no-browser
+```
+
+Open `http://127.0.0.1:8765` **in a browser on the server**. Alternatively,
+double-click `Start Reporter.bat` in that folder to start and open the browser.
+Keep the terminal open; Ctrl+C stops Reporter. This is an interactive launch, not
+an automatically starting Windows service.
+
+On first run, configure the accounts/library, output and contacts paths for the server.
+The Windows account running Reporter needs read access to the source files and write
+access to the selected output and contacts locations. Your workstation's paths and
+Outlook profile do not automatically exist on the server.
+
+### Shared website accessed from staff PCs
+
+The command above listens only on `127.0.0.1`. Staff cannot reach it by substituting
+the server name in the URL, and opening firewall port 8765 does not change that.
+Do not change the Python server to listen on `0.0.0.0`.
+
+For shared access, IT should use the existing
+[IIS configuration template](deploy/iis/web.config). It keeps Python private and
+places IIS with Windows Authentication and HTTPS in front:
+
+1. Install IIS with Windows Authentication and Microsoft's HttpPlatformHandler v1.2.
+2. Complete the Python and dependency setup on the server.
+3. Use the template as the IIS site's `web.config`. Replace the Python/script paths,
+   data and log paths, public HTTPS origin and administrator logins with the server's
+   actual values. The template includes the required IIS authentication configuration.
+4. Configure an application pool with **No Managed Code** and a service identity
+   that can read the application and dealership library and write the configured
+   data, logs and output locations. Create the data and log directories first.
+5. Configure the HTTPS binding/certificate and Windows sign-in with IT. The template
+   sets `REPORTER_MODE=server`, `REPORTER_DATA_ROOT`, `REPORTER_PUBLIC_ORIGINS` and
+   `REPORTER_ADMINS`; retain these with your deployment's values.
+
+IIS starts and manages Python through HttpPlatformHandler; do not also run the manual
+startup command for that site. Users open the configured HTTPS address rather than
+`127.0.0.1:8765`. Shared settings live under `REPORTER_DATA_ROOT`, with personal
+settings under its `users` folder.
+
+**Deployment checks:** open the HTTPS site from a staff PC, confirm Windows sign-in
+and separation of users' settings, then run a sample report and export an `.eml`.
+Local startup alone does not verify the IIS deployment. Outlook drafts and Word-based
+PDF copies depend on Office automation under the process account; do not assume an
+IIS process can use each visiting user's desktop Outlook profile. Use `.eml` export
+for users to open in their own Outlook unless IT has validated the required workflow.
 
 ## First run
 

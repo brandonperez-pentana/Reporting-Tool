@@ -1226,6 +1226,25 @@ def contains_ignored_folder(path: Path) -> bool:
 
 MONTH_NAMES_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
                      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+MONTH_NAMES_FULL = ["january", "february", "march", "april", "may", "june",
+                    "july", "august", "september", "october", "november", "december"]
+
+
+def month_name_spellings(month: int) -> list[str]:
+    """Every way a filename may spell the month: any 3+ letter prefix (sep, sept, september)."""
+    full = MONTH_NAMES_FULL[month - 1]
+    return [full[:length] for length in range(3, len(full) + 1)]
+
+
+_MONTH_BY_SPELLING = {
+    spelling: index + 1 for index in range(12) for spelling in month_name_spellings(index + 1)
+}
+# Longest first so "sept" is preferred over "sep" inside a regex alternation.
+MONTH_NAME_PATTERN = "|".join(sorted(_MONTH_BY_SPELLING, key=len, reverse=True))
+
+
+def month_from_name(token: str) -> int | None:
+    return _MONTH_BY_SPELLING.get(str(token or "").strip().rstrip(".").lower())
 
 
 def find_workbook_report_groups(
@@ -1329,15 +1348,14 @@ def month_variants(month: int, year: int) -> set[str]:
     """
     base_date = datetime(year=year, month=month, day=1)
     variants = {
-        normalize_text(base_date.strftime("%b %Y")),      # jul 2026
-        normalize_text(base_date.strftime("%B %Y")),      # july 2026
         normalize_text(base_date.strftime("%m %Y")),      # 07 2026
         normalize_text(base_date.strftime("%m-%Y")),
         normalize_text(base_date.strftime("%m_%Y")),
-        normalize_text(base_date.strftime("%Y %b")),      # 2026 jul
-        normalize_text(base_date.strftime("%Y %B")),      # 2026 july
         normalize_text(f"{month} {year}"),                # 7 2026 (unpadded)
     }
+    for spelling in month_name_spellings(month):
+        variants.add(f"{spelling} {year}")                 # jul 2026, sept 2026
+        variants.add(f"{year} {spelling}")                 # 2026 jul
     return {variant for variant in variants if variant}
 
 
@@ -1349,14 +1367,9 @@ def month_short_year_patterns(month: int, year: int) -> list[re.Pattern]:
       - a day number followed by a real year ("May 26 2025") is not mistaken
         for a short year, via the trailing negative lookahead.
     """
-    base_date = datetime(year=year, month=month, day=1)
     short_year = f"{year % 100:02d}"
-    names = {
-        normalize_text(base_date.strftime("%b")),
-        normalize_text(base_date.strftime("%B")),
-    }
     patterns: list[re.Pattern] = []
-    for name in sorted(filter(None, names)):
+    for name in month_name_spellings(month):
         patterns.append(re.compile(rf"\b{re.escape(name)}\s+{short_year}\b(?!\s+\d{{4}})"))
     return patterns
 
@@ -1499,7 +1512,7 @@ def extract_dealership_name_from_filename(file_name: str, fallback_folder_name: 
         cleaned = re.sub(pattern, " ", cleaned, flags=re.IGNORECASE)
 
     cleaned = re.sub(
-        r"\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{2,4}\b",
+        rf"\b(?:{MONTH_NAME_PATTERN})\.?\s+\d{{2,4}}\b",
         " ",
         cleaned,
         flags=re.IGNORECASE,
@@ -5029,15 +5042,15 @@ def ensure_four_priority_insights(
     if len(cleaned) > PRIORITY_INSIGHT_COUNT:
         cleaned = cleaned[:PRIORITY_INSIGHT_COUNT]
 
+    if not pad:
+        # A placeholder month has no figures to report. Do not mine partial metrics
+        # and present them as findings when the report itself is blocked.
+        return cleaned[:PRIORITY_INSIGHT_COUNT]
+
     for fact in _metric_fallback_insights(metrics, seen, used_themes):
         if len(cleaned) >= PRIORITY_INSIGHT_COUNT:
             break
         cleaned.append(fact)
-
-    if not pad:
-        # A placeholder month has no figures to report. Padding it to four lines would
-        # manufacture content for a report that has none.
-        return cleaned[:PRIORITY_INSIGHT_COUNT]
 
     for fallback in _iter_distinct_fallback_candidates(LIMITED_SIGNAL_FALLBACKS, seen):
         if len(cleaned) >= PRIORITY_INSIGHT_COUNT:
@@ -12174,6 +12187,7 @@ def funnel_client_copy(
         month_name = full_month_name_from_label(month_label)
         previous_name = _previous_month_name(month_label)
         bullets, summary, sms = funnel_insights.build_client_copy(model, month_name, previous_name)
+        bullets = ensure_four_priority_insights(bullets, metrics=metrics)
         verdict = model.verdict()
     except Exception:  # noqa: BLE001 - never let the new path break a month
         logging.getLogger("funnel_insights").exception(
@@ -12258,7 +12272,7 @@ def generate_insights_from_metrics(
         )
         bullets = [sanitise_priority_insight_text(standardise_reporting_text(bullet)) for bullet in bullets]
         summary = standardise_reporting_text(summary)
-        sms = standardise_reporting_text(sms)
+        sms = PLACEHOLDER_SMS
         scoring_profile = build_internal_scoring_profile(metrics, "stable", "placeholder")
         return (
             bullets,
@@ -12335,7 +12349,7 @@ def generate_insights_from_metrics(
         )
         placeholder_bullets = [sanitise_priority_insight_text(standardise_reporting_text(bullet)) for bullet in placeholder_bullets]
         placeholder_summary = standardise_reporting_text(placeholder_summary)
-        placeholder_sms = standardise_reporting_text(placeholder_sms)
+        placeholder_sms = PLACEHOLDER_SMS
         scoring_profile = build_internal_scoring_profile(metrics, "stable", "placeholder")
         return (
             placeholder_bullets,
@@ -14127,6 +14141,11 @@ def parse_month_label(month_label: str) -> tuple[int, int, str]:
         except ValueError:
             continue
         return parsed.month, parsed.year, parsed.strftime("%b %Y")
+    spelled = re.fullmatch(r"([A-Za-z]+)\.?\s+(\d{4})", cleaned)
+    if spelled and month_from_name(spelled.group(1)):
+        month = month_from_name(spelled.group(1))
+        year = int(spelled.group(2))
+        return month, year, f"{MONTH_NAMES_SHORT[month - 1]} {year}"
     raise ValueError(
         "Month must be provided in a supported format such as 'Mar 2026', 'March 2026', '2026-03', or '03/2026'."
     )

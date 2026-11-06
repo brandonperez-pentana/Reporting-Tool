@@ -20,6 +20,7 @@ The copy rules come from the operator, and they are narrow on purpose:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import combinations
 
 from reporting.month_model import Attribution, MonthModel, Movement, Station, _campaign_driver
 
@@ -56,6 +57,21 @@ class Finding:
     brief: str = ""     # the summary form: the movement and where it landed
     statement: str = ""  # the summary form when it stands alone, so it carries a verb
     hollow: bool = False  # a rate that rose only because its base shrank
+    minor: bool = False   # a count too small for its percentage to mean anything
+    compact: str = ""   # the SMS clause: "deals up (33→40)", "email capture up to 47%"
+
+
+# 1 -> 4 is "up 300%" and still four tasks; below this a count is not a point of interest.
+SMALL_COUNT = 10
+
+
+def _is_small_count(movement: Movement) -> bool:
+    if _is_rate(movement) or movement.metric_type == "currency" or movement.unit == "currency":
+        return False
+    values = (movement.previous, movement.current)
+    if any(not isinstance(v, (int, float)) for v in values):
+        return False
+    return max(abs(v) for v in values) < SMALL_COUNT
 
 
 def _is_rate(movement: Movement) -> bool:
@@ -94,10 +110,24 @@ def _change_note(movement: Movement) -> str:
     # "fell 100% to $0" says the same thing twice.
     if movement.current == 0:
         return ""
+    # "down 775% to -$6,104": a percentage of a figure that crossed zero means nothing.
+    if any(isinstance(v, (int, float)) and v < 0 for v in (movement.previous, movement.current)):
+        return ""
     # "339.2%" is false precision on a jump of more than four times.
     if abs(movement.percent_change) >= 100:
         return f"{abs(movement.percent_change):.0f}%"
     return f"{abs(movement.percent_change):.1f}%"
+
+
+def _size(movement: Movement) -> float:
+    """How far it moved, in the unit it is reported in: points for a rate, % otherwise.
+
+    Ranking a rate by its relative change made 2% -> 8% a "300%" move that outranked
+    every count in the month.
+    """
+    if _is_rate(movement) and movement.point_change is not None:
+        return abs(movement.point_change)
+    return abs(movement.percent_change or 0)
 
 
 def _pct(movement: Movement) -> str:
@@ -225,9 +255,13 @@ def _campaign_sentence(label: str, movement: Movement, attribution: Attribution 
     # the largest of the three the report names. Naming it reads as an accusation and
     # tells the reader nothing they can act on.
     if attribution and attribution.driver and attribution.value:
-        base += f", with {attribution.driver} returning {_money(attribution.value)} of it"
-        if attribution.share_of_total:
-            base += f" ({attribution.share_of_total:.0f}%)"
+        share = attribution.share_of_total
+        if share is not None and 0 < share <= 100:
+            base += f", with {attribution.driver} returning {_money(attribution.value)} of it ({share:.0f}%)"
+        else:
+            # A campaign can exceed net return when other campaigns offset it. Avoid
+            # calling that an impossible share of the total.
+            base += f"; {attribution.driver} returned {_money(attribution.value)}"
     return base + "."
 
 
@@ -237,14 +271,18 @@ def build_findings(model: MonthModel) -> list[Finding]:
     seen: set[str] = set()
 
     def add(key: str, text: str, improving: bool, order: int, magnitude: float,
-            short: str = "", brief: str = "", statement: str = "", hollow: bool = False) -> None:
+            short: str = "", brief: str = "", statement: str = "", hollow: bool = False,
+            minor: bool = False, movement: Movement | None = None, compact: str = "") -> None:
         if key in seen or not text:
             return
         seen.add(key)
         brief = brief or short or text.rstrip(".")
+        if movement is not None and not compact:
+            compact = _compact_clause(key, movement)
         findings.append(Finding(key=key, text=text, improving=improving, order=order,
                                 magnitude=magnitude, short=short or text.rstrip("."),
-                                brief=brief, statement=statement or brief, hollow=hollow))
+                                brief=brief, statement=statement or brief, hollow=hollow,
+                                minor=minor, compact=compact))
 
     # 1. The bottom line: units and what the campaigns returned.
     bottom = model.bottom_line()
@@ -255,7 +293,8 @@ def build_findings(model: MonthModel) -> list[Finding]:
             ORDER_UNITS, abs(movement.percent_change or 0),
             short=_movement_clause(units_station.label, movement, with_level=True),
             brief=_movement_clause(units_station.label, movement, with_level=True),
-            statement=_movement_clause(units_station.label, movement, with_level=True, verb=True))
+            statement=_movement_clause(units_station.label, movement, with_level=True, verb=True),
+            movement=movement)
 
     for key, label, block in (
         ("service_campaign_roi", "Service campaign return", model.service_campaigns),
@@ -274,7 +313,8 @@ def build_findings(model: MonthModel) -> list[Finding]:
             ORDER_CAMPAIGN_RETURN, abs(movement.percent_change or 0),
             short=_movement_clause(label, movement, with_level=True),
             brief=_movement_clause(label, movement, with_level=True),
-            statement=_movement_clause(label, movement, with_level=True, verb=True))
+            statement=_movement_clause(label, movement, with_level=True, verb=True),
+            movement=movement)
 
     # 2. The first leak, and the funnel around it. Earliest before largest: everything
     #    below a station inherits what happens at it. Sales before service, because the
@@ -288,12 +328,12 @@ def build_findings(model: MonthModel) -> list[Finding]:
             qualifier = f"on {_change_note(shrunken)} fewer leads" if shrunken else ""
             suffix = f" {qualifier}" if qualifier else ""
             add(station.key, _station_sentence(station, qualifier), movement.improving,
-                base_order + position, abs(movement.percent_change or 0),
+                base_order + position, _size(movement),
                 short=_movement_clause(station.label, movement, with_level=False)
                 + (" on fewer leads" if shrunken else ""),
                 brief=_movement_clause(station.label, movement, with_level=True) + suffix,
                 statement=_movement_clause(station.label, movement, with_level=True, verb=True) + suffix,
-                hollow=shrunken is not None)
+                hollow=shrunken is not None, minor=_is_small_count(movement), movement=movement)
 
     # 3. A campaign that cost money is always worth a line of its own.
     for block in (model.sales_campaigns, model.service_campaigns):
@@ -303,7 +343,8 @@ def build_findings(model: MonthModel) -> list[Finding]:
             add(f"losing:{campaign.name}", f"{campaign.name} returned {_money(campaign.roi)}.",
                 False, ORDER_LOSING_CAMPAIGN, abs(campaign.roi),
                 short=f"{campaign.name} returned {_money(campaign.roi)}",
-                brief=f"{campaign.name} returned {_money(campaign.roi)}")
+                brief=f"{campaign.name} returned {_money(campaign.roi)}",
+                compact=f"{campaign.name} ROI {_money(campaign.roi)}")
 
     # 4. Follow-up workload, once the funnel itself has been covered.
     for station in model.hygiene:
@@ -311,10 +352,11 @@ def build_findings(model: MonthModel) -> list[Finding]:
             continue
         movement = station.movement
         add(station.key, _station_sentence(station), movement.improving,
-            ORDER_HYGIENE, abs(movement.percent_change or 0),
+            ORDER_HYGIENE, _size(movement),
             short=_movement_clause(station.label, movement, with_level=False),
             brief=_movement_clause(station.label, movement, with_level=True),
-            statement=_movement_clause(station.label, movement, with_level=True, verb=True))
+            statement=_movement_clause(station.label, movement, with_level=True, verb=True),
+            minor=_is_small_count(movement), movement=movement)
 
     findings.sort(key=lambda f: (f.order, -f.magnitude))
     return findings
@@ -335,19 +377,39 @@ def select_insights(model: MonthModel, findings: list[Finding]) -> list[Finding]
 
 
 VERDICT_OPENERS = {
-    "good": "{month} finished ahead of {previous} across the main measures",
-    "soft": "{month} came in behind {previous} across the main measures",
-    "mixed": "{month} moved in both directions",
-    "quiet": "{month} moved little on the main measures",
-}
-
-# When some measures moved against the verdict, "across the main measures" overclaims.
-QUALIFIED_OPENERS = {
-    "good": ("softened", "{month} finished ahead of {previous} overall"),
-    "soft": ("firmed", "{month} came in behind {previous} overall"),
+    "good": "{month} was ahead of {previous} overall",
+    "soft": "{month} was a softer month than {previous}",
+    "mixed": "{month} was a mixed month",
+    "quiet": "{month} was broadly steady",
 }
 
 SUMMARY_SENTENCES = 3
+SUMMARY_EXTRA_POINTS = 3
+
+
+def _tier(finding: Finding) -> int:
+    """Sales chain, then service chain, then losing campaigns, then follow-up workload."""
+    if finding.order < ORDER_SERVICE_FUNNEL:
+        return 0
+    if finding.order < ORDER_LOSING_CAMPAIGN:
+        return 1
+    if finding.order < ORDER_HYGIENE:
+        return 2
+    return 3
+
+
+def _by_interest(findings: list[Finding]) -> list[Finding]:
+    return sorted(findings, key=lambda f: (_tier(f), -f.magnitude, f.order))
+
+
+def _points_of_interest(chosen: list[Finding], findings: list[Finding]) -> list[Finding]:
+    """The most telling movements that did not make the four insights.
+
+    Tiered before sized: a 130% rise in overdue tasks is worth a sentence only when the
+    funnel has nothing left to say, not ahead of a 64% fall in leads.
+    """
+    said = {f.key for f in chosen}
+    return _by_interest([f for f in findings if f.key not in said and not f.minor])[:SUMMARY_EXTRA_POINTS]
 
 
 def _closing_positive(stated: list[Finding], pool: list[Finding]) -> Finding | None:
@@ -363,27 +425,25 @@ def _closing_positive(stated: list[Finding], pool: list[Finding]) -> Finding | N
 
 def render_summary(model: MonthModel, chosen: list[Finding], month_name: str,
                    previous_name: str, findings: list[Finding] | None = None) -> str:
-    """A factual frame, then the same movements in short form. No mood, no advice.
+    """A conversational frame, then the most useful movements not in the lead.
 
-    Two things this has to avoid. It cannot splice a finished sentence onto the frame
-    with "with", which produced "July was split, with reminders sent rose from 70 to
-    300"; and it cannot simply repeat the bullets, which puts the same three sentences
-    in front of the reader twice in one email. So it takes the reduced clause instead:
-    the frame absorbs the first, and the rest stand alone. The drivers stay in the
-    bullets, which is the only place they are worth the words.
+    Use a reduced clause after the opener, so the summary reads as a sentence rather
+    than a metrics dump. Two supporting movements follow (outside the bullets where
+    possible), good news last; a closing positive is added only when the summary would
+    otherwise end on bad news. Never introduced with the repetitive "Elsewhere".
     """
-    verdict = model.verdict()
-    template = VERDICT_OPENERS[verdict]
-    if verdict in QUALIFIED_OPENERS:
-        against, qualified = QUALIFIED_OPENERS[verdict]
-        if model.breadth()[against]:
-            template = qualified
-    opener = template.format(month=month_name, previous=previous_name)
+    opener = VERDICT_OPENERS[model.verdict()].format(month=month_name, previous=previous_name)
     if not chosen:
         return f"{opener}."
-    stated = chosen[:SUMMARY_SENTENCES]
-    sentences = [f"{opener}, with {stated[0].brief}."]
-    sentences.extend(f"{_sentence_case(f.statement)}." for f in stated[1:])
+    wanted = SUMMARY_SENTENCES - 1
+    supporting = _points_of_interest(chosen, list(findings or []))[:wanted]
+    if len(supporting) < wanted:
+        supporting += _by_interest([f for f in chosen[1:] if not f.minor])[:wanted - len(supporting)]
+    # Good news last, so the summary does not end on the worst number when it need not.
+    supporting.sort(key=lambda f: f.improving and not f.hollow)
+    stated = [chosen[0], *supporting]
+    sentences = [f"{opener}, with {chosen[0].brief}."]
+    sentences.extend(f"{_sentence_case(f.statement)}." for f in supporting)
     if not stated[-1].improving or stated[-1].hollow:
         closer = _closing_positive(stated, list(chosen) + list(findings or []))
         if closer is not None:
@@ -391,21 +451,79 @@ def render_summary(model: MonthModel, chosen: list[Finding], month_name: str,
     return " ".join(sentences)
 
 
+SMS_LABELS = {
+    "units": "deals",
+    "leads": "sales leads",
+    "contact": "uncontacted leads",
+    "appointments": "appointment rate",
+    "test_drives": "test-drive rate",
+    "close": "close rate",
+    "sales_campaign_roi": "sales ROI",
+    "service_campaign_roi": "service ROI",
+    "reminders": "service reminders",
+    "enrolled": "customers enrolled",
+    "bookings": "campaign bookings",
+    "sales_overdue_tasks": "overdue sales tasks",
+    "sales_email_capture_rate": "email capture",
+    "service_outstanding_tasks": "outstanding tasks",
+    "service_no_shows": "no-shows",
+}
+SERVICE_KEYS = {"service_campaign_roi", "reminders", "enrolled", "bookings",
+                "service_outstanding_tasks", "service_no_shows"}
+
+
+def _compact_clause(key: str, movement: Movement) -> str:
+    """"deals up (33→40)" for a count; "email capture up to 47%" for a rate, dollars or time."""
+    name = SMS_LABELS.get(key, movement.label.lower())
+    direction = _direction_short(movement)
+    if _is_rate(movement) or movement.metric_type in ("currency", "time") or movement.unit in ("currency", "minutes"):
+        return f"{name} {direction} to {_value(movement, movement.current)}"
+    return f"{name} {direction} ({_value(movement, movement.previous)}→{_value(movement, movement.current)})"
+
+
+def _sms_area(finding: Finding) -> int:
+    if finding.key.startswith("losing:"):
+        return 2
+    return 1 if finding.key in SERVICE_KEYS else 0
+
+
 def render_sms(chosen: list[Finding], month_name: str) -> str:
-    """Under the limit, and never one-sided when the month was not."""
-    positives = [f for f in chosen if f.improving and not f.hollow]
-    negatives = [f for f in chosen if not f.improving]
-    if positives and negatives:
-        body = f"{positives[0].short}, but {negatives[0].short}"
-        if len(negatives) > 1 and len(body) + len(negatives[1].short) + 6 < SMS_LIMIT - 30:
-            body += f" and {negatives[1].short}"
-    else:
-        parts = [f.short for f in chosen[:2]]
-        body = " and ".join(parts) if parts else "no material movement"
-    message = f"DealerSocket {month_name} Insights:\n{_sentence_case(body)}."
-    if len(message) > SMS_LIMIT:
-        message = f"DealerSocket {month_name} Insights:\n{_sentence_case(chosen[0].short)}."
-    return message
+    """As much of the month as fits, and never one-sided when the month was not.
+
+    Each side's largest movement goes in first; then the most remaining bullets that fit,
+    preferring the fuller message on a tie. Laid out as one sentence per area (sales,
+    service, losing campaigns), in chain order.
+    """
+    header = f"DealerSocket {month_name} Insights:\n"
+    usable = [f for f in chosen if not f.hollow]
+    if not usable:
+        return f"{header}No material movement."
+
+    def message(picked: list[Finding]) -> str:
+        areas: dict[int, list[str]] = {}
+        for f in sorted(picked, key=lambda f: (_sms_area(f), f.order)):
+            areas.setdefault(_sms_area(f), []).append(f.compact or f.short)
+        body = " ".join(f"{_sentence_case(', '.join(clauses))}." for clauses in areas.values())
+        return f"{header}{body}"
+
+    leads = [
+        max(side, key=lambda f: f.magnitude)
+        for side in ([f for f in usable if f.improving], [f for f in usable if not f.improving])
+        if side
+    ]
+    picked = next(
+        (option for option in (leads, *([lead] for lead in leads)) if len(message(option)) <= SMS_LIMIT),
+        leads[:1],
+    )
+    rest = [f for f in usable if f not in picked]
+    fitting = (
+        [*picked, *extra]
+        for size in range(len(rest) + 1)
+        for extra in combinations(rest, size)
+        if len(message([*picked, *extra])) <= SMS_LIMIT
+    )
+    # Most facts first, then the fullest message; at most four bullets, so this stays tiny.
+    return message(max(fitting, key=lambda option: (len(option), len(message(option))), default=picked))
 
 
 def build_client_copy(model: MonthModel, month_name: str, previous_name: str) -> tuple[list[str], str, str]:

@@ -77,5 +77,41 @@ class MonthMatchingTests(unittest.TestCase):
         self.assertFalse(any(p.search(normalized) for p in patterns))
 
 
+class AbbreviationTests(unittest.TestCase):
+    """Exports switch abbreviations month to month: Sep 2026 one month, Sept 2026 the next."""
+
+    def test_every_abbreviation_of_the_month_matches(self) -> None:
+        for spelling in ("Sep", "Sept", "Sept.", "SEPT", "Septem", "September"):
+            for year in ("2026", "26"):
+                filename = f"{{Dealer}} Monthly Sales Report - {spelling} {year}"
+                with self.subTest(filename=filename):
+                    self.assertGreater(score(filename, 9, 2026), 0)
+
+    def test_other_months_accept_their_longer_abbreviations(self) -> None:
+        for filename, month in (("Sales Report - Janu 2026", 1), ("Sales Report - Febr 2026", 2),
+                                ("Sales Report - Augu 2026", 8), ("Sales Report - Novem 2026", 11)):
+            with self.subTest(filename=filename):
+                self.assertGreater(score(filename, month, 2026), 0)
+
+    def test_an_abbreviation_never_matches_a_neighbouring_month(self) -> None:
+        for month in (8, 10):
+            self.assertEqual(score("{Dealer} Monthly Sales Report - Sept 2026", month, 2026), 0)
+        self.assertEqual(score("Sales Report - June 2026", 7, 2026), 0)
+        self.assertEqual(score("Sales Report - Mar 2026", 5, 2026), 0)
+
+    def test_two_letters_is_not_a_month(self) -> None:
+        self.assertIsNone(core.month_from_name("Se"))
+        self.assertEqual(core.month_from_name("Sept."), 9)
+
+    def test_the_month_is_stripped_from_the_dealership_name(self) -> None:
+        name = core.extract_dealership_name_from_filename(
+            "{Demo Site 1} Monthly Sales Report - Sept 2026.pdf", "Fallback")
+        self.assertEqual(name, "Demo Site 1")
+
+    def test_a_typed_month_label_accepts_the_abbreviation(self) -> None:
+        self.assertEqual(core.parse_month_label("Sept 2026"), (9, 2026, "Sep 2026"))
+        self.assertEqual(core.parse_month_label("Sep 2026"), (9, 2026, "Sep 2026"))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -4,7 +4,9 @@ import csv
 import html
 import json
 import logging
+import os
 import re
+import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -1560,16 +1562,29 @@ def save_contact_rows(mapping_path: str | Path, rows: list[dict[str, str]]) -> N
             }
         )
     suffix = resolved.suffix.lower()
-    if suffix == ".csv":
-        with resolved.open("w", encoding="utf-8", newline="") as handle:
-            writer = csv.DictWriter(handle, fieldnames=list(CONTACT_CSV_FIELDNAMES))
-            writer.writeheader()
-            writer.writerows(normalized_rows)
-        return
-    if suffix == ".json":
-        resolved.write_text(json.dumps(normalized_rows, indent=2), encoding="utf-8")
-        return
-    raise ValueError("Contact file must be a CSV or JSON file.")
+    if suffix not in {".csv", ".json"}:
+        raise ValueError("Contact file must be a CSV or JSON file.")
+    temporary: Path | None = None
+    try:
+        # Same-directory replacement is atomic. Never truncate the live contacts file
+        # before the entire new version has been written successfully.
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", newline="", dir=resolved.parent,
+            prefix=f".{resolved.name}.", suffix=".tmp", delete=False,
+        ) as handle:
+            temporary = Path(handle.name)
+            if suffix == ".csv":
+                writer = csv.DictWriter(handle, fieldnames=list(CONTACT_CSV_FIELDNAMES))
+                writer.writeheader()
+                writer.writerows(normalized_rows)
+            else:
+                json.dump(normalized_rows, handle, indent=2)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, resolved)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 def load_recipient_mappings(mapping_path: str | Path | None) -> dict[str, dict[str, str]]:

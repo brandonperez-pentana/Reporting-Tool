@@ -18,6 +18,7 @@ const state = {
   contacts: { path: '', fieldnames: [], rows: [], dealership_names: [] },
   outlookChecked: false,
   dirty: false,
+  contactsDirty: false,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -90,16 +91,21 @@ async function guard(fn, label) {
 }
 
 function openModal(id) { $(id).hidden = false; }
-function closeModal(id) { $(id).hidden = true; }
+function closeModal(id) {
+  if (id === 'contacts-modal' && state.contactsDirty
+      && !window.confirm('Your contact changes have not been saved. Close without saving?')) return;
+  if (id === 'contacts-modal') state.contactsDirty = false;
+  $(id).hidden = true;
+}
 
 document.addEventListener('click', (event) => {
   if (event.target.matches('[data-close]')) {
     const modal = event.target.closest('.modal');
-    if (modal) modal.hidden = true;
+    if (modal) closeModal(modal.id);
   }
 });
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') document.querySelectorAll('.modal:not([hidden])').forEach((m) => { m.hidden = true; });
+  if (event.key === 'Escape') document.querySelectorAll('.modal:not([hidden])').forEach((m) => closeModal(m.id));
 });
 
 document.querySelectorAll('.stage-tab').forEach((tab) => {
@@ -1073,6 +1079,8 @@ $('browse-choose').addEventListener('click', () => {
 $('open-contacts').addEventListener('click', () => guard(async () => {
   busy(true, 'Loading contacts…');
   state.contacts = await api('/api/contacts');
+  state.contactsDirty = false;
+  contactsStatus('Changes are saved to the file shown below when you click Save contacts.');
   renderContacts();
   openModal('contacts-modal');
 }));
@@ -1089,6 +1097,17 @@ const CONTACT_FIELDS = [
 ];
 
 const today = () => new Date().toISOString().slice(0, 10);
+
+function contactsStatus(message, failed = false) {
+  const note = $('contacts-save-status');
+  note.textContent = message;
+  note.className = failed ? 'modal-note warn' : 'modal-note';
+}
+
+function markContactsDirty() {
+  state.contactsDirty = true;
+  contactsStatus('Unsaved contact changes — click Save contacts to write them to your file.');
+}
 
 function contactGroups() {
   const groups = [];
@@ -1127,6 +1146,7 @@ function renderContacts() {
 
 function addDealership() {
   state.contacts.rows.push(blankContactRow(''));
+  markContactsDirty();
   renderContacts();
   // Put the new card in front of the operator and in the control they need next,
   // rather than appending it below the fold of a scrolling list.
@@ -1187,6 +1207,7 @@ function contactCard(group, known) {
       input.addEventListener('input', () => {
         row[field] = input.value;
         row.last_updated = today();
+        markContactsDirty();
       });
       line.append(input);
     });
@@ -1194,6 +1215,7 @@ function contactCard(group, known) {
     remove.type = 'button';
     remove.addEventListener('click', () => {
       state.contacts.rows.splice(state.contacts.rows.indexOf(row), 1);
+      markContactsDirty();
       renderContacts();
     });
     line.append(remove);
@@ -1205,6 +1227,7 @@ function contactCard(group, known) {
   add.type = 'button';
   add.addEventListener('click', () => {
     state.contacts.rows.push(blankContactRow(group.dealership));
+    markContactsDirty();
     renderContacts();
   });
   card.append(add);
@@ -1257,6 +1280,7 @@ function setGroupDealership(group, name) {
   // Every contact in the card belongs to the same site, so the name moves together.
   group.rows.forEach((row) => { row.dealership = name; row.last_updated = today(); });
   group.dealership = name;
+  markContactsDirty();
 }
 
 function blankContactRow(dealership) {
@@ -1272,27 +1296,36 @@ $('contacts-add-top').addEventListener('click', addDealership);
 
 $('contacts-save').addEventListener('click', () => guard(async () => {
   busy(true, 'Saving contacts…');
-  const rows = state.contacts.rows.filter((row) => (row.dealership || '').trim() || (row.email || '').trim() || (row.contact_name || '').trim());
-  const result = await api('/api/contacts', { method: 'POST', body: { path: state.contacts.path, rows } });
-  await refreshSession();
-  // The panel stays open and re-renders from what the server actually wrote. Closing
-  // on save hid the result: an entry that never made it into the file looked saved.
-  if (result.contacts) {
-    state.contacts = result.contacts;
-    renderContacts();
+  try {
+    const rows = state.contacts.rows.filter((row) => (row.dealership || '').trim() || (row.email || '').trim() || (row.contact_name || '').trim());
+    const result = await api('/api/contacts', { method: 'POST', body: { path: state.contacts.path, revision: state.contacts.revision, rows } });
+    // The panel stays open and re-renders from what the server actually wrote.
+    if (result.contacts) {
+      state.contacts = result.contacts;
+      renderContacts();
+    }
+    state.contactsDirty = false;
+    const names = result.dealerships || [];
+    const summary = names.length
+      ? `Saved ${result.rows} contact(s) across ${names.length} dealership(s): ${names.slice(0, 6).join(', ')}${names.length > 6 ? '…' : ''}.`
+      : 'Saved. The contacts file is now empty.';
+    status(`${summary} ${result.note}`.trim(), 'good');
+    contactsStatus(`${summary} Saved to ${result.path}. ${result.note}`.trim());
+    // A session refresh failure must not make a completed disk save look unsuccessful.
+    try { await refreshSession(); } catch (err) {
+      contactsStatus(`Contacts saved to ${result.path}. Could not refresh the reporting session: ${err.message}`, true);
+    }
+  } catch (err) {
+    contactsStatus(err.message || String(err), true);
+    throw err;
   }
-  const names = result.dealerships || [];
-  const summary = names.length
-    ? `Saved ${result.rows} contact(s) across ${names.length} dealership(s): ${names.slice(0, 6).join(', ')}${names.length > 6 ? '…' : ''}.`
-    : 'Saved. The contacts file is now empty.';
-  status(`${summary} ${result.note}`.trim(), 'good');
 }));
 
 /* ---------- go ---------- */
 
 $('status-dismiss').addEventListener('click', () => status(''));
 window.addEventListener('beforeunload', (event) => {
-  if (state.dirty) { event.preventDefault(); event.returnValue = ''; }
+  if (state.dirty || state.contactsDirty) { event.preventDefault(); event.returnValue = ''; }
 });
 
 bootstrap();

@@ -18,6 +18,7 @@ Two things this layer adds that a desktop UI gets for free:
 from __future__ import annotations
 
 import contextvars
+import hashlib
 import logging
 import os
 import sys
@@ -907,26 +908,31 @@ def contacts(path: str | None = None) -> dict[str, Any]:
     if not path:
         resolved = ensure_contacts_file(resolved)
     try:
-        rows = email_builder.load_contact_rows(resolved)
+        with _CONTACTS_LOCK:
+            rows = email_builder.load_contact_rows(resolved)
+            revision = _contacts_revision(resolved)
     except Exception as exc:  # noqa: BLE001
         raise ApiError(f"Could not read the contacts file: {friendly_error(exc)}") from exc
     return {
         "path": str(resolved),
         "fieldnames": list(email_builder.CONTACT_CSV_FIELDNAMES),
         "rows": rows,
+        "revision": revision,
         "dealership_names": dealership_names(),
     }
 
 
 def save_contacts(payload: dict[str, Any]) -> dict[str, Any]:
     resolved = _contacts_path(None if settings_manager.server_mode() else payload.get("path"))
-    rows = payload.get("rows") or []
+    rows = payload.get("rows")
     if not isinstance(rows, list):
         raise ApiError("Contacts must be a list of rows.")
 
     problems: list[str] = []
     cleaned: list[dict[str, str]] = []
     for index, row in enumerate(rows, start=1):
+        if not isinstance(row, dict):
+            raise ApiError(f"Contact row {index} must be an object.")
         clean = {key: str(row.get(key, "") or "").strip() for key in email_builder.CONTACT_CSV_FIELDNAMES}
         cleaned.append(clean)
         for error in email_builder.validate_contact_row_for_save(clean):
@@ -934,15 +940,35 @@ def save_contacts(payload: dict[str, Any]) -> dict[str, Any]:
     if problems:
         raise ApiError(" | ".join(problems[:12]))
 
-    Path(resolved).parent.mkdir(parents=True, exist_ok=True)
-    with _CONTACTS_LOCK:
-        email_builder.save_contact_rows(resolved, cleaned)
+    try:
+        with _CONTACTS_LOCK:
+            if "revision" in payload and payload["revision"] != _contacts_revision(resolved):
+                raise ApiError(
+                    "The contacts file changed since you opened it. Reopen Contacts and merge your edits before saving.",
+                    409,
+                )
+            email_builder.save_contact_rows(resolved, cleaned)
+    except OSError as exc:
+        raise ApiError(f"Contacts were not saved to {resolved}: {friendly_error(exc)}") from exc
+
+    # Remember a selected file, rather than reverting to the old/default contacts.csv
+    # on the next open or run. On a server the configured shared path remains authoritative.
+    configured = str(settings_manager.load_settings().get("recipient_mapping_path") or "").strip()
+    if not settings_manager.server_mode() and (
+        not configured or Path(configured).expanduser().resolve() != resolved
+    ):
+        try:
+            settings_manager.save_settings({"recipient_mapping_path": str(resolved)})
+        except OSError as exc:
+            raise ApiError(
+                f"Contacts were saved to {resolved}, but the selected path could not be remembered: {friendly_error(exc)}"
+            ) from exc
 
     refreshed = False
     with _ENGINE_LOCK:
         if report_engine.has_active_session():
             try:
-                report_engine.reload_session_recipient_mapping()
+                report_engine.reload_session_recipient_mapping(resolved)
                 refreshed = True
             except Exception:  # noqa: BLE001
                 refreshed = False
@@ -1014,10 +1040,14 @@ def ensure_contacts_file(path: str | Path) -> Path:
     return resolved
 
 
+def _contacts_revision(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else ""
+
+
 def _contacts_path(path: str | None) -> Path:
     raw = str(path or "").strip()
     if not raw:
         raw = str(settings_manager.load_settings().get("recipient_mapping_path") or "").strip()
     if not raw:
         raw = str(ROOT / "data" / "contacts.csv")
-    return Path(raw).expanduser()
+    return Path(raw).expanduser().resolve()

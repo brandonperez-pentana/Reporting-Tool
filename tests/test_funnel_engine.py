@@ -162,6 +162,22 @@ class FunnelCopyArrivesIntactTests(unittest.TestCase):
     def test_the_sms_still_fits(self) -> None:
         self.assertLessEqual(len(self.result[2]), core.SMS_CHAR_LIMIT)
 
+    def test_a_funnel_report_has_four_priority_lines(self) -> None:
+        self.assertEqual(len(self.result[0]), core.PRIORITY_INSIGHT_COUNT)
+
+    def test_sparse_but_real_metrics_are_padded_with_an_explanation(self) -> None:
+        metrics = {}
+        core.add_metric(metrics, "sales_total_deals", "10", "12")
+        core.add_metric(metrics, "sales_total_leads", "100", "120")
+        copy = core.funnel_client_copy(
+            metrics, DEALERSHIP, MONTH, "sales data", "service data", breakdowns={}
+        )
+        self.assertIsNotNone(copy)
+        bullets, _summary, sms, _verdict = copy
+        self.assertEqual(len(bullets), core.PRIORITY_INSIGHT_COUNT)
+        self.assertTrue(any("No further" in bullet for bullet in bullets))
+        self.assertLessEqual(len(sms), core.SMS_CHAR_LIMIT)
+
     def test_the_month_rating_agrees_with_the_summary_verdict(self) -> None:
         """"Softer" above a summary that opens "moved in both directions" is a contradiction."""
         expected = core.FUNNEL_VERDICT_RATINGS[model_for().verdict()]
@@ -202,9 +218,13 @@ class SummaryReadsAsProseTests(unittest.TestCase):
         """The reader gets the bullets underneath; saying it twice wastes the email."""
         for bullet in self.bullets:
             self.assertNotIn(bullet, self.summary)
+        self.assertNotIn("Elsewhere,", self.summary)
+
+    def test_the_summary_opens_in_a_conversational_voice(self) -> None:
+        self.assertTrue(self.summary.startswith("July was a softer month than June, with "), self.summary)
 
     def test_a_good_month_with_a_decline_is_not_ahead_across_the_main_measures(self) -> None:
-        """A summary read "ahead of July across the main measures" while leads fell 25.6%."""
+        """A positive month can still contain a decline in lead volume."""
         metrics: dict = {}
         for name, previous, current in (("sales_total_deals", "20", "22"),
                                         ("sales_total_leads", "172", "128"),
@@ -214,7 +234,7 @@ class SummaryReadsAsProseTests(unittest.TestCase):
         model = mm.build_month_model(dealership=DEALERSHIP, month_label=MONTH, metrics=metrics, breakdowns={})
         self.assertEqual(model.verdict(), "good")
         _, summary, _ = fi.build_client_copy(model, "August", "July")
-        self.assertTrue(summary.startswith("August finished ahead of July overall"), summary)
+        self.assertTrue(summary.startswith("August was ahead of July overall"), summary)
 
     def test_every_sentence_is_closed(self) -> None:
         self.assertTrue(self.summary.endswith("."))
@@ -275,6 +295,96 @@ class TheSummaryClosesOnSomethingWorkingTests(unittest.TestCase):
         )
 
 
+class TheSummaryCarriesWhatTheBulletsCouldNotTests(unittest.TestCase):
+    """Four bullets fill up on the chain; a 130% rise in outstanding tasks then had
+    nowhere to go, because the summary only restated the bullets."""
+
+    def copy(self, **extra):
+        metrics: dict = {}
+        for name, previous, current in (
+            ("sales_total_deals", "115", "55"),
+            ("sales_total_leads", "354", "127"),
+            ("sales_new_leads_to_appointments", "24.0%", "6.0%"),
+            ("sales_new_leads_to_test_drives", "36.0%", "31.0%"),
+            ("sales_appointment_to_sales", "40.0%", "31.0%"),
+            ("service_outstanding_tasks", "300", "690"),
+            *((name, *pair) for name, pair in extra.items()),
+        ):
+            core.add_metric(metrics, name, previous, current)
+        model = mm.build_month_model(dealership=DEALERSHIP, month_label=MONTH,
+                                     metrics=metrics, breakdowns={})
+        findings = fi.build_findings(model)
+        bullets, summary, _ = fi.build_client_copy(model, "July", "June")
+        return findings, bullets, summary
+
+    def test_a_large_movement_outside_the_bullets_reaches_the_summary(self) -> None:
+        _, bullets, summary = self.copy()
+        self.assertFalse(any("Outstanding service tasks" in b for b in bullets))
+        self.assertIn("Outstanding service tasks rose 130% to 690.", summary)
+
+    def test_the_summary_does_not_restate_the_other_bullets(self) -> None:
+        _, _, summary = self.copy()
+        self.assertNotIn("Lead volume fell", summary)
+        self.assertNotIn("Lead-to-appointment conversion fell", summary)
+
+    def test_a_tiny_count_is_not_a_point_of_interest(self) -> None:
+        """1 -> 4 no-shows is "up 300%" and still four people."""
+        findings, _, summary = self.copy(service_no_shows=("1", "4"))
+        no_shows = next((f for f in findings if f.key == "service_no_shows"), None)
+        if no_shows is not None:
+            self.assertTrue(no_shows.minor)
+        self.assertNotIn("no-shows", summary.lower())
+
+
+class TheSummaryPicksWhatMattersTests(unittest.TestCase):
+    @staticmethod
+    def finding(key: str, improving: bool, order: int, magnitude: float) -> fi.Finding:
+        statement = f"{key} {'rose' if improving else 'fell'}"
+        return fi.Finding(key=key, text=statement + ".", improving=improving, order=order,
+                          magnitude=magnitude, short=statement, brief=statement, statement=statement)
+
+    def summary(self, chosen, findings) -> str:
+        model = mm.build_month_model(dealership=DEALERSHIP, month_label=MONTH, metrics={}, breakdowns={})
+        return fi.render_summary(model, chosen, "July", "June", [*chosen, *findings])
+
+    def test_the_funnel_outranks_follow_up_workload(self) -> None:
+        chosen = [self.finding("units", False, fi.ORDER_UNITS, 52)]
+        summary = self.summary(chosen, [
+            self.finding("overdue", False, fi.ORDER_HYGIENE, 130),
+            self.finding("leads", False, fi.ORDER_SALES_FUNNEL, 64),
+            self.finding("close", False, fi.ORDER_SALES_FUNNEL + 4, 61),
+        ])
+        self.assertIn("Leads fell.", summary)
+        self.assertIn("Close fell.", summary)
+        self.assertNotIn("Overdue", summary)
+
+    def test_good_news_comes_last(self) -> None:
+        chosen = [self.finding("units", True, fi.ORDER_UNITS, 20)]
+        summary = self.summary(chosen, [
+            self.finding("bookings", True, fi.ORDER_SERVICE_FUNNEL, 80),
+            self.finding("appointments", False, fi.ORDER_SALES_FUNNEL + 2, 10),
+        ])
+        self.assertTrue(summary.endswith("Bookings rose."), summary)
+
+    def test_a_thin_month_borrows_from_the_bullets(self) -> None:
+        chosen = [
+            self.finding("units", False, fi.ORDER_UNITS, 11),
+            self.finding("test_drives", True, fi.ORDER_SALES_FUNNEL + 3, 18),
+            self.finding("overdue", True, fi.ORDER_HYGIENE, 50),
+        ]
+        summary = self.summary(chosen, [self.finding("email", True, fi.ORDER_HYGIENE, 11)])
+        self.assertIn("Test_drives rose.", summary)
+        self.assertIn("Email rose.", summary)
+
+    def test_a_rate_is_sized_in_points(self) -> None:
+        movement = mm.Movement(
+            metric="sales_new_leads_to_appointments", label="Lead-to-appointment conversion",
+            previous=2.0, current=8.0, percent_change=300.0, improving=True, usable=True,
+            band="strong", unit="percentage", metric_type="rate", point_change=6.0,
+        )
+        self.assertEqual(fi._size(movement), 6.0)
+
+
 class ARateLiftedByFewerLeadsIsNotAWinTests(unittest.TestCase):
     """Leads 331 -> 91 took lead-to-appointment from 4% to 9% while appointments fell.
     Reported bare, "conversion rose" told the dealer the opposite of what happened."""
@@ -296,7 +406,7 @@ class ARateLiftedByFewerLeadsIsNotAWinTests(unittest.TestCase):
 
     def test_the_sms_does_not_lead_with_it(self) -> None:
         _, _, sms = self.copy()
-        self.assertNotIn("Lead-to-appointment conversion up", sms)
+        self.assertNotIn("appointment rate up", sms)
 
     def test_a_genuine_rise_is_left_alone(self) -> None:
         bullets, _, _ = self.copy(leads=("331", "240"))
@@ -309,9 +419,112 @@ class SmsReadsAsASentenceTests(unittest.TestCase):
         _, _, sms = fi.build_client_copy(model_for(), "July", "June")
         self.assertTrue(sms.split("\n", 1)[1][:1].isupper(), sms)
 
+    def test_the_body_starts_on_the_line_after_the_header(self) -> None:
+        _, _, sms = fi.build_client_copy(model_for(), "July", "June")
+        self.assertTrue(sms.startswith("DealerSocket July Insights:\n"), sms)
+        self.assertNotIn("\n\n", sms)
+
+    def test_a_count_shows_both_figures_and_a_rate_where_it_landed(self) -> None:
+        count = mm.Movement(
+            metric="sales_total_deals", label="Deal volume", previous=33.0, current=40.0,
+            percent_change=21.2, improving=True, usable=True, band="strong",
+            unit="count", metric_type="volume", point_change=None,
+        )
+        rate = mm.Movement(
+            metric="sales_email_capture_rate", label="Email capture rate", previous=41.0, current=47.0,
+            percent_change=14.6, improving=True, usable=True, band="strong",
+            unit="percentage", metric_type="rate", point_change=6.0,
+        )
+        self.assertEqual(fi._compact_clause("units", count), "deals up (33→40)")
+        self.assertEqual(fi._compact_clause("sales_email_capture_rate", rate), "email capture up to 47%")
+
+    def test_sales_and_service_are_separate_sentences(self) -> None:
+        def finding(key: str, compact: str, order: int) -> fi.Finding:
+            return fi.Finding(key=key, text=compact, improving=True, order=order,
+                              magnitude=1, short=compact, compact=compact)
+        sms = fi.render_sms([
+            finding("reminders", "service reminders up (178→195)", fi.ORDER_SERVICE_FUNNEL),
+            finding("leads", "sales leads up (50→68)", fi.ORDER_SALES_FUNNEL),
+            finding("units", "deals up (33→40)", fi.ORDER_UNITS),
+        ], "August")
+        self.assertEqual(sms, "DealerSocket August Insights:\n"
+                              "Deals up (33→40), sales leads up (50→68). Service reminders up (178→195).")
+
     def test_units_are_called_deal_volume_everywhere(self) -> None:
         bullets, summary, sms = fi.build_client_copy(model_for(), "July", "June")
         self.assertNotIn("units", " ".join([*bullets, summary, sms]).lower())
+
+
+class SmsUsesTheRoomItHasTests(unittest.TestCase):
+    """Messages were stopping at two facts with 50+ characters to spare."""
+
+    @staticmethod
+    def finding(key: str, short: str, improving: bool, magnitude: float, hollow: bool = False) -> fi.Finding:
+        return fi.Finding(key=key, text=short + ".", improving=improving, order=0,
+                          magnitude=magnitude, short=short, hollow=hollow)
+
+    def test_a_second_positive_is_added_when_it_fits(self) -> None:
+        sms = fi.render_sms([
+            self.finding("a", "sales campaign return up 121% to $75,334", True, 121),
+            self.finding("b", "service campaign return up 83.0% to $35,120", True, 83),
+            self.finding("c", "uncontacted leads up 140%", False, 140),
+        ], "September")
+        self.assertIn("service campaign return up 83.0%", sms)
+        self.assertIn("uncontacted leads up 140%", sms)
+        self.assertLessEqual(len(sms), fi.SMS_LIMIT)
+
+    def test_a_shorter_fact_is_tried_when_the_next_one_does_not_fit(self) -> None:
+        sms = fi.render_sms([
+            self.finding("a", "sales campaign return up 56.8% to $20,559", True, 56.8),
+            self.finding("b", "lead-to-test-drive conversion down 6 pts", False, 20),
+            self.finding("c", "appointment-to-sale conversion down 3 pts across the month", False, 5),
+            self.finding("d", "outstanding service tasks up 133%", False, 133),
+        ], "September")
+        self.assertIn("outstanding service tasks up 133%", sms)
+        self.assertNotIn("appointment-to-sale", sms)
+        self.assertLessEqual(len(sms), fi.SMS_LIMIT)
+
+    def test_an_early_fact_does_not_crowd_out_a_fuller_message(self) -> None:
+        sms = fi.render_sms([
+            self.finding("a", "deal volume up 118% to 48", True, 118),
+            self.finding("b", "lead volume up 38.3%", True, 38.3),
+            self.finding("c", "uncontacted leads up 112%", False, 112),
+            self.finding("d", "lead-to-appointment conversion down 2 pts", False, 5),
+        ], "September")
+        self.assertIn("lead-to-appointment conversion down 2 pts", sms)
+        self.assertGreater(len(sms), 130)
+        self.assertLessEqual(len(sms), fi.SMS_LIMIT)
+
+    def test_each_side_leads_with_its_largest_movement(self) -> None:
+        sms = fi.render_sms([
+            self.finding("a", "lead-to-appointment conversion up 2 pts over the month", True, 5),
+            self.finding("b", "sales campaign return down 36.5% to $25,468", False, 36.5),
+            self.finding("c", "appointment-to-sale conversion up 5 pts", True, 12),
+        ], "September")
+        self.assertIn("ppointment-to-sale conversion up 5 pts", sms)
+        self.assertNotIn("lead-to-appointment", sms.lower())
+
+    def test_a_one_sided_month_is_not_capped_at_two_facts(self) -> None:
+        sms = fi.render_sms([
+            self.finding("a", "deal volume down 21.8% to 61", False, 21.8),
+            self.finding("b", "sales campaign return down 96.6% to $621", False, 96.6),
+            self.finding("c", "lead volume down 21.4%", False, 21.4),
+            self.finding("d", "lead-to-appointment conversion up 2 pts on fewer leads", True, 50, hollow=True),
+        ], "September")
+        self.assertIn("lead volume down 21.4%", sms)
+        self.assertNotIn("fewer leads", sms)
+        self.assertLessEqual(len(sms), fi.SMS_LIMIT)
+
+
+class AFigureThatCrossedZeroHasNoPercentageTests(unittest.TestCase):
+    def test_a_return_that_went_negative_is_not_a_775_percent_fall(self) -> None:
+        movement = mm.Movement(
+            metric="sales_campaign_roi", label="Sales campaign return", previous=907.0,
+            current=-6104.0, percent_change=-773.0, improving=False, usable=True,
+            band="strong", unit="currency", metric_type="currency", point_change=None,
+        )
+        self.assertEqual(fi._movement_clause("Sales campaign return", movement, with_level=True),
+                         "sales campaign return down to -$6,104")
 
 
 class CampaignsCarryTheirShareTests(unittest.TestCase):
@@ -333,6 +546,12 @@ class CampaignsCarryTheirShareTests(unittest.TestCase):
     def test_the_share_of_the_month_is_stated(self) -> None:
         text = self.copy_for(self.block(roi=13286, previous=10710, leader=6877))
         self.assertIn("HY NEW Prospect returning $6,877 of it (52%)", text)
+
+    def test_a_campaign_over_net_return_is_not_described_as_a_share(self) -> None:
+        text = self.copy_for(self.block(roi=2898, previous=1836, leader=3049))
+        self.assertIn("HY NEW Prospect returned $3,049", text)
+        self.assertNotIn("of it", text)
+        self.assertNotIn("105%", text)
 
     def test_a_campaign_that_returned_nothing_is_not_named_as_the_driver(self) -> None:
         """It may still be the largest of the three the report names, and naming it
