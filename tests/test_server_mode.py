@@ -41,6 +41,25 @@ class ServerModeCase(unittest.TestCase):
         self.addCleanup(env.stop)
 
 
+class ServerDiagnosticsTests(ServerModeCase):
+    def test_server_diagnostics_use_the_configured_data_root(self) -> None:
+        self.assertEqual(settings_manager.diagnostics_dir(), self.root / "logs")
+
+    def test_email_preview_diagnostics_do_not_record_recipient_addresses(self) -> None:
+        with mock.patch.object(report_engine, "append_workflow_evidence_record") as append:
+            report_engine._record_email_preview_evidence(
+                "Demo Site 1",
+                {"to": "alice@example.com", "cc": "team@example.com", "subject": "Snapshot"},
+                contact_ready=True,
+                email_context={},
+            )
+        record = append.call_args.args[1]
+        self.assertNotIn("to", record)
+        self.assertNotIn("cc", record)
+        self.assertTrue(record["to_present"])
+        self.assertTrue(record["cc_present"])
+
+
 class PerUserSettingsTests(ServerModeCase):
     def test_legacy_sign_off_values_are_not_returned_as_settings(self) -> None:
         legacy = {

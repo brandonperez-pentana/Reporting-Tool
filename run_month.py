@@ -206,7 +206,9 @@ def main(month: str | None = None, output_dir: str | None = None, all_dealership
         "output_folder": output,
     }
 
-    log_path = Path(__file__).parent / "logs" / f"{_month_slug(month_label)}_run_summary.json"
+    from settings_manager import diagnostics_dir
+
+    log_path = diagnostics_dir() / f"{_month_slug(month_label)}_run_summary.json"
     log_path.parent.mkdir(exist_ok=True)
     log_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
 

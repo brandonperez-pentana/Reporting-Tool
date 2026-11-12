@@ -186,7 +186,6 @@ SETTING_KEYS = (
     "recipient_mapping_path",
     "month",
     "sent_email_pdf_folder",
-    "test_send_address",
     "eml_export_folder",
     "default_bcc",
     "insight_engine",
@@ -644,6 +643,27 @@ def _require_dealership(name: str) -> None:
         raise ApiError(f"'{name}' is not part of the current reporting run.", 404)
 
 
+def _require_actionable_dealerships(names: list[str]) -> None:
+    """Apply the queue's approval/tick/email-ready rules at the API boundary too."""
+    with _ENGINE_LOCK:
+        if not report_engine.has_active_session():
+            raise ApiError("No reporting run is loaded. Run reporting first.", 409)
+
+        queue = {row["dealership"]: row for row in report_engine.get_send_queue()}
+        for name in names:
+            row = queue.get(name)
+            if row is None:
+                if report_engine.has_dealership(name):
+                    raise ApiError(f"{name} must be approved before it can be prepared or exported.", 403)
+                raise ApiError(f"'{name}' is not part of the current reporting run.", 404)
+            if row.get("sent"):
+                raise ApiError(f"{name} has already been sent and cannot be prepared again.", 409)
+            if not row.get("ready_to_send"):
+                raise ApiError(f"{name} must be checked in the email queue before this action.", 403)
+            if not row.get("email_ready"):
+                raise ApiError(f"Build the email for {name} before this action.", 409)
+
+
 # --- drafts and copies ----------------------------------------------------------
 #
 # This front end cannot send. Every route here stops at something a person then acts
@@ -668,9 +688,12 @@ def start_drafts(payload: dict[str, Any]) -> dict[str, Any]:
             "land in the server's mailbox, not yours. Use Download .eml instead."
         )
 
+    _require_actionable_dealerships(names)
+
     def work(job_id: str) -> dict[str, Any]:
         _job_update(job_id, message=f"Saving drafts for {len(names)} email(s)…", total=len(names), processed=0)
         with _ENGINE_LOCK:
+            _require_actionable_dealerships(names)
             results = report_engine.send_emails(names, send=False)
         # send_emails catches per dealership and stores str(exc), so a COM code reached
         # the operator unexplained. Translate each one the same way a raised error is.
@@ -698,12 +721,15 @@ def start_pdf_copies(payload: dict[str, Any]) -> dict[str, Any]:
         payload = {key: value for key, value in payload.items() if key != "folder"}
     override = str(payload.get("folder") or settings.get("sent_email_pdf_folder") or "").strip()
 
+    _require_actionable_dealerships(names)
+
     def work(job_id: str) -> dict[str, Any]:
         _job_update(job_id, message=f"Rendering {len(names)} PDF copy(ies)…", total=len(names), processed=0)
         # The renderer is shared with reporting runs, so this waits its turn like one.
         _hold_run_lock(job_id)
         try:
             with _ENGINE_LOCK:
+                _require_actionable_dealerships(names)
                 results = report_engine.archive_email_copies(names, override)
         finally:
             _RUN_LOCK.release()
@@ -753,9 +779,12 @@ def start_export(payload: dict[str, Any]) -> dict[str, Any]:
             "Choose where the .eml files should go first — Settings, 'Save .eml files to'."
         )
 
+    _require_actionable_dealerships(names)
+
     def work(job_id: str) -> dict[str, Any]:
         _job_update(job_id, message=f"Writing {len(names)} .eml file(s)…", total=len(names), processed=0)
         with _ENGINE_LOCK:
+            _require_actionable_dealerships(names)
             results = report_engine.export_emails_as_eml(names, folder)
         for row in results:
             if row.get("error"):

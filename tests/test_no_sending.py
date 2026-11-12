@@ -63,9 +63,65 @@ class TheAppCannotSendTests(unittest.TestCase):
     def test_the_page_offers_no_send_control(self) -> None:
         markup = (ROOT / "webapp" / "static" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "webapp" / "static" / "app.js").read_text(encoding="utf-8")
+        self.assertNotIn("test_send_address", api.SETTING_KEYS)
         for gone in ("send-ticked", "send-test", "test_send_address"):
             self.assertNotIn(gone, markup)
             self.assertNotIn(gone, script)
+
+
+class ActionableSelectionTests(unittest.TestCase):
+    def _require(self, row=None, *, in_session=True):
+        with (
+            mock.patch.object(report_engine, "has_active_session", return_value=True),
+            mock.patch.object(report_engine, "get_send_queue", return_value=[row] if row else []),
+            mock.patch.object(report_engine, "has_dealership", return_value=in_session),
+        ):
+            api._require_actionable_dealerships(["Demo Site 1"])
+
+    def _row(self, **overrides):
+        row = {
+            "dealership": "Demo Site 1",
+            "ready_to_send": True,
+            "email_ready": True,
+            "sent": False,
+        }
+        row.update(overrides)
+        return row
+
+    def test_only_approved_checked_unsent_rows_with_built_email_are_actionable(self) -> None:
+        self._require(self._row())
+
+    def test_unapproved_dealership_is_rejected(self) -> None:
+        with self.assertRaisesRegex(api.ApiError, "must be approved"):
+            self._require()
+
+    def test_unchecked_dealership_is_rejected(self) -> None:
+        with self.assertRaisesRegex(api.ApiError, "must be checked"):
+            self._require(self._row(ready_to_send=False))
+
+    def test_missing_email_preview_is_rejected(self) -> None:
+        with self.assertRaisesRegex(api.ApiError, "Build the email"):
+            self._require(self._row(email_ready=False))
+
+    def test_already_sent_dealership_is_rejected(self) -> None:
+        with self.assertRaisesRegex(api.ApiError, "already been sent"):
+            self._require(self._row(sent=True))
+
+    def test_unknown_dealership_is_rejected(self) -> None:
+        with self.assertRaisesRegex(api.ApiError, "not part of the current"):
+            self._require(in_session=False)
+
+    def test_draft_pdf_and_eml_routes_all_apply_the_selection_guard(self) -> None:
+        with (
+            mock.patch.object(report_engine, "has_active_session", return_value=True),
+            mock.patch.object(report_engine, "get_send_queue", return_value=[]),
+            mock.patch.object(report_engine, "has_dealership", return_value=True),
+            mock.patch.object(api.settings_manager, "server_mode", return_value=False),
+            mock.patch.object(api.settings_manager, "load_settings", return_value={"eml_export_folder": "out"}),
+        ):
+            for action in (api.start_drafts, api.start_pdf_copies, api.start_export):
+                with self.subTest(action=action.__name__), self.assertRaisesRegex(api.ApiError, "must be approved"):
+                    action({"dealerships": ["Demo Site 1"]})
 
 
 class PdfCopiesLandBesideTheReportsTests(unittest.TestCase):

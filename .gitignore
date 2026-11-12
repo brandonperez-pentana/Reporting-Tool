@@ -26,6 +26,7 @@ logs/*.json
 logs/*.log
 Insights Output/
 reporting_audit/
+dist/
 
 # Generated per-dealership deliverables (real client data)
 /*.txt

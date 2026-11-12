@@ -14245,7 +14245,9 @@ def run_reporting_pipeline(
     parsed_metrics_json_path, parsed_metrics_csv_path = save_debug_metrics_files(resolved_output_dir, results)
     parsed_metric_deltas_json_path, parsed_metric_deltas_csv_path = save_metric_delta_debug_files(resolved_output_dir, results)
     scoring_debug_csv_path = save_scoring_debug_csv(resolved_output_dir, results)
-    logs_dir = Path(__file__).resolve().parent / "logs"
+    from settings_manager import diagnostics_dir
+
+    logs_dir = diagnostics_dir()
     save_phase163_validation_json(logs_dir, results)
     save_phase164_validation_json(logs_dir, results)
     save_phase165_validation_json(logs_dir, results)

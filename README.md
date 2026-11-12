@@ -117,6 +117,11 @@ places IIS with Windows Authentication and HTTPS in front:
    sets `REPORTER_MODE=server`, `REPORTER_DATA_ROOT`, `REPORTER_PUBLIC_ORIGINS` and
    `REPORTER_ADMINS`; retain these with your deployment's values.
 
+Server diagnostics and cached template assets are written under
+`REPORTER_DATA_ROOT\logs`. Restrict that folder to the Reporter service identity and
+administrators; it can contain dealership names and operational metadata. Contact names
+and email addresses are omitted from diagnostic records.
+
 IIS starts and manages Python through HttpPlatformHandler; do not also run the manual
 startup command for that site. Users open the configured HTTPS address rather than
 `127.0.0.1:8765`. Shared settings live under `REPORTER_DATA_ROOT`, with personal
@@ -401,8 +406,18 @@ item (those are saved customer emails, and the branded layout is shipped as temp
 images instead); the real contact list; any generated reports; `user_settings.json`; and
 the metric history. Each is either customer data or specific to the machine it came from.
 
-The build refuses to produce a zip if any of that is present, so this is enforced rather
-than remembered.
+Build the team-testing package from a committed, clean checkout rather than zipping the
+working folder. The release builder archives only `HEAD` and refuses known machine-state,
+contact, log, generated-report, and non-demo account files:
+
+```powershell
+python tools\build_release.py
+```
+
+The zip is written under `dist/` and checked before it is kept. The builder requires Git
+and a clean working tree; commit the reviewed release candidate first. It permits only
+the synthetic `Accounts/Demo Site 1` through `Demo Site 10` sample data and requires
+`data/contacts.csv` to be header-only. Review the exact zip before distributing it.
 
 ## If Outlook will not start
 

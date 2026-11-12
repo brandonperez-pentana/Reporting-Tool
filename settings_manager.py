@@ -21,9 +21,6 @@ DEFAULT_SETTINGS = {
     # Where PDF copies of sent emails are archived. Empty means the operator has
     # not chosen one yet and will be prompted at send time.
     "sent_email_pdf_folder": "",
-    # Address used by "Send test to me" so a whole batch can be previewed in a
-    # real inbox before anything reaches a dealership.
-    "test_send_address": "",
     # Where "Save as .eml" writes approved emails for manual import into Outlook.
     "eml_export_folder": "",
     # "rules" (default) or "funnel". The funnel engine reads the month model and
@@ -57,6 +54,7 @@ USER_SETTING_KEYS = frozenset({
     "portfolio",
     "output_folder",
     "sent_email_pdf_folder",
+    # Keep legacy test-send values personal when migrating old settings to server mode.
     "test_send_address",
     "eml_export_folder",
     "default_bcc",
@@ -73,6 +71,14 @@ def server_mode() -> bool:
 def data_root() -> Path | None:
     raw = os.environ.get("REPORTER_DATA_ROOT", "").strip()
     return Path(raw).expanduser() if raw else None
+
+
+def diagnostics_dir() -> Path:
+    """Keep server diagnostics with server data, not in the shared code install."""
+    root = data_root()
+    if server_mode() and root is not None:
+        return root / "logs"
+    return Path(__file__).resolve().parent / "logs"
 
 
 def current_user() -> str | None:

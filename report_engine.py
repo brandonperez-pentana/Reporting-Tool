@@ -163,11 +163,12 @@ def _set_active_session(session: ReportingSession | None) -> None:
 # history makes each write progressively slower (one had already grown past
 # 700KB in normal use). Keep only the most recent records.
 MAX_DIAGNOSTIC_RECORDS = 500
-EVIDENCE_JSON_PATH = Path(__file__).resolve().parent / "logs" / "email_workflow_upgrade_evidence.json"
-CONTENT_MAPPING_EVIDENCE_PATH = Path(__file__).resolve().parent / "logs" / "email_build_content_mapping_evidence.json"
-PIPELINE_SOURCE_OF_TRUTH_PATH = Path(__file__).resolve().parent / "logs" / "email_pipeline_source_of_truth.json"
-CONTACT_EMAIL_WIRING_PATH = Path(__file__).resolve().parent / "logs" / "contact_email_wiring_validation.json"
-OUTLOOK_DRAFT_RENDER_TRACE_PATH = Path(__file__).resolve().parent / "logs" / "outlook_draft_render_trace.json"
+_DIAGNOSTICS_DIR = settings_manager.diagnostics_dir()
+EVIDENCE_JSON_PATH = _DIAGNOSTICS_DIR / "email_workflow_upgrade_evidence.json"
+CONTENT_MAPPING_EVIDENCE_PATH = _DIAGNOSTICS_DIR / "email_build_content_mapping_evidence.json"
+PIPELINE_SOURCE_OF_TRUTH_PATH = _DIAGNOSTICS_DIR / "email_pipeline_source_of_truth.json"
+CONTACT_EMAIL_WIRING_PATH = _DIAGNOSTICS_DIR / "contact_email_wiring_validation.json"
+OUTLOOK_DRAFT_RENDER_TRACE_PATH = _DIAGNOSTICS_DIR / "outlook_draft_render_trace.json"
 
 
 def month_label_slug(month_label: str) -> str:
@@ -281,9 +282,10 @@ def _record_email_preview_evidence(
             "placeholders_found": preview.get("placeholders_found", []),
             "replaced_placeholders": preview.get("replaced_placeholders", []),
             "missing_placeholders": preview.get("missing_placeholders", []),
-            "subject": preview.get("subject", ""),
-            "to": preview.get("to", ""),
-            "cc": preview.get("cc", ""),
+            "subject_present": bool(str(preview.get("subject", "")).strip()),
+            "subject_length": len(str(preview.get("subject", ""))),
+            "to_present": bool(str(preview.get("to", "")).strip()),
+            "cc_present": bool(str(preview.get("cc", "")).strip()),
             "contact_ready": contact_ready,
             "template_variables_used": sorted(email_context.keys()),
             "rendered_plain_body_length": len(str(preview.get("preview_text", ""))),
@@ -291,7 +293,6 @@ def _record_email_preview_evidence(
             "attachment_count": len(preview.get("attachments", []) or []),
         },
     )
-
 
 class SessionNotInitializedError(RuntimeError):
     pass
@@ -1204,7 +1205,7 @@ def build_email_preview(
         {
             "dealership": state.result.dealership_name,
             "has_contact": state.contact_matched,
-            "contact_name_used": greeting,
+            "contact_name_used": bool(greeting and greeting != state.result.dealership_name),
             "priority_insights_raw_type": type(pi_raw).__name__,
             "priority_insights_count": len(pi_extracted),
             "insight_1_present": bool(i1.strip() and i1 != pad),
@@ -1255,12 +1256,12 @@ def build_email_preview(
             "dealership": state.result.dealership_name,
             "contact_found": bool(row_w),
             "contact_active": contact_active_w,
-            "contact_name": cname_w,
-            "email": email_w,
-            "cc": cc_w,
-            "name_used_in_context": name_used_ctx,
-            "to_field": state.to_recipients,
-            "cc_field": state.cc_recipients,
+            "contact_name_present": bool(cname_w),
+            "email_present": bool(email_w),
+            "cc_present": bool(cc_w),
+            "name_used_in_context_is_dealership_fallback": name_used_ctx == dealer_nm,
+            "to_present": bool(state.to_recipients.strip()),
+            "cc_present_in_email": bool(state.cc_recipients.strip()),
             "greeting_contains_contact_name": bool(cname_w) and bool(cname_w in plain_for_log),
             "fallback_used": name_used_ctx == dealer_nm,
             "warnings": wiring_warnings,

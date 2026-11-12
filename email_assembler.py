@@ -17,13 +17,14 @@ from typing import Any
 from jinja2 import Environment, StrictUndefined, TemplateError
 
 import email_builder
+import settings_manager
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 TEMPLATE_DIR = PACKAGE_DIR / "templates"
 HTML_TEMPLATE_PATH = TEMPLATE_DIR / "dealer_snapshot_email.html.j2"
 TEXT_TEMPLATE_PATH = TEMPLATE_DIR / "dealer_snapshot_email.txt.j2"
 ASSET_MANIFEST_PATH = TEMPLATE_DIR / "email_asset_manifest.json"
-ASSEMBLER_VALIDATION_PATH = PACKAGE_DIR / "logs" / "email_assembler_validation.json"
+ASSEMBLER_VALIDATION_PATH = settings_manager.diagnostics_dir() / "email_assembler_validation.json"
 
 # These diagnostic files are rewritten in full on every append, so an uncapped
 # history makes each write progressively slower (one had already grown past
@@ -124,7 +125,7 @@ _MIME_BY_SUFFIX = {
 
 
 def msg_asset_cache_dir(msg_path: Path) -> Path:
-    return PACKAGE_DIR / "logs" / "template_assets" / re.sub(r"[^A-Za-z0-9_.-]+", "_", msg_path.stem)
+    return settings_manager.diagnostics_dir() / "template_assets" / re.sub(r"[^A-Za-z0-9_.-]+", "_", msg_path.stem)
 
 
 # Extracting a .msg re-reads and re-decodes every attachment. Assembling one

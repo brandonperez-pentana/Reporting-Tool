@@ -32,9 +32,9 @@ only that machine can reach it — the same reach the desktop app has.
 | Desktop | Browser |
 | --- | --- |
 | Stage 1 Reporting | **1 · Reporting** — month, Run Reporting, dealership list, insight/summary/SMS editing, Approve & next, source PDF |
-| Stage 2 Email Queue | **2 · Email Queue** — ready-to-send ticks, To/CC/Subject, HTML preview, Save as drafts, Send test, Send ticked |
+| Stage 2 Email Queue | **2 · Email Queue** — ready-to-send ticks, To/CC/Subject, HTML preview, Save as drafts (local only), Download/Save as .eml, Save PDF copies |
 | Stage 3 SMS | **3 · SMS** — the consolidated document, Copy all, Save as .txt, Export CSV breakdown |
-| ⚙ Settings | **Settings** — the same five paths plus the test address |
+| ⚙ Settings | **Settings** — reporting paths, contacts, per-user output and export options |
 | Contacts manager | **Contacts** |
 | Report reference window | **Report reference**, on stage 2 |
 
@@ -54,23 +54,23 @@ webapp/api.py            JSON wrapper over report_engine — no reporting logic 
 webapp/static/           one page: index.html, app.css, app.js (no framework, no CDN)
 ```
 
-`webapp/api.py` calls `report_engine` exactly as `reporter_ui.py` does. Nothing in
-`webapp/` parses a PDF, builds an email or writes an insight. Keep it that way: both
-front ends stay in step only for as long as the engine is the single source of truth.
+`webapp/api.py` calls `report_engine` for report and email operations. It also enforces
+the queue's approval, checked, and email-ready requirements at the API boundary.
+Nothing in `webapp/` parses a PDF or writes an insight. Keep reporting logic in the engine.
 
 Two things this layer adds that a desktop UI gets for free:
 
 * **Serialisation.** `report_engine` holds one module-level session. A browser can fire
   overlapping requests in a way a single-threaded Tk loop never does, so every engine
   call goes through one lock.
-* **Jobs.** Reporting runs and send batches take minutes. They run on a worker thread and
+* **Jobs.** Reporting runs and export batches take minutes. They run on a worker thread and
   the page polls `/api/jobs/<id>` — the web equivalent of the Tk worker queue.
 
 ## Security
 
 Localhost only, no login — the same posture as the desktop app. Two checks keep that
 true even though a browser is involved: the `Host` header must be a loopback name (which
-defeats DNS rebinding), and anything that changes state or sends mail must be
-same-origin. Neither replaces authentication, so **do not bind this to `0.0.0.0`**.
+defeats DNS rebinding), and state-changing requests must be same-origin. Neither replaces
+authentication, so **do not bind this to `0.0.0.0`**.
 The rendered email preview is sandboxed with a Content-Security-Policy that blocks
 script and network access.
